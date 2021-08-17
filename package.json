@@ -1,0 +1,79 @@
+{
+	"name": "deploy-interactions",
+	"version": "0.0.1-canary",
+	"description": "An executable library for registering discord application commands via @discordjs/rest",
+	"author": "ckohen",
+	"license": "Apache-2.0",
+	"scripts": {
+		"pretest": "npm run build",
+		"test": "jest",
+		"prebuild": "npm run clean",
+		"build": "tsc --build --force",
+		"clean": "rimraf dist",
+		"lint": "eslint src --ext mjs,js,ts",
+		"lint:fix": "eslint src --ext mjs,js,ts --fix",
+		"format": "prettier write **/*.{ts,js,json,yml,yaml}",
+		"prepare": "husky install"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/ckohen/deploy-interactions.git"
+	},
+	"bugs": {
+		"url": "https://github.com/ckohen/deploy-interactions/issues"
+	},
+	"homepage": "https://github.com/ckohen/deploy-interactions#readme",
+	"keywords": [
+		"discord",
+		"interactions",
+		"commands",
+		"api",
+		"bot",
+		"node",
+		"discordapp"
+	],
+	"directories": {
+		"lib": "src",
+		"test": "__tests__",
+		"bin": "dist/bin"
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@discordjs/rest": "^0.1.0-canary.0",
+		"chalk": "^4.1.2",
+		"commander": "^8.1.0",
+		"discord-api-types": "^0.23.0-next.fdc1c1a.1629117774",
+		"tslib": "^2.3.1"
+	},
+	"devDependencies": {
+		"@babel/core": "^7.15.0",
+		"@babel/plugin-proposal-decorators": "^7.14.5",
+		"@babel/preset-env": "^7.15.0",
+		"@babel/preset-typescript": "^7.15.0",
+		"@commitlint/cli": "^13.1.0",
+		"@commitlint/config-angular": "^13.1.0",
+		"@types/jest": "^27.0.1",
+		"@types/node": "^16.6.1",
+		"@typescript-eslint/eslint-plugin": "^4.29.1",
+		"@typescript-eslint/parser": "^4.29.1",
+		"babel-jest": "^27.0.6",
+		"babel-plugin-const-enum": "^1.1.0",
+		"babel-plugin-transform-typescript-metadata": "^0.3.2",
+		"eslint": "^7.32.0",
+		"eslint-config-marine": "^9.0.6",
+		"eslint-config-prettier": "^8.3.0",
+		"eslint-plugin-import": "^2.24.0",
+		"eslint-plugin-prettier": "^3.4.0",
+		"husky": "^7.0.1",
+		"jest": "^27.0.6",
+		"lint-staged": "^11.1.2",
+		"prettier": "^2.3.2",
+		"rimraf": "^3.0.2",
+		"typescript": "^4.3.5"
+	},
+	"engines": {
+		"node": ">=16.0.0"
+	}
+}

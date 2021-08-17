@@ -1,0 +1,21 @@
+{
+	"compilerOptions": {
+		"strict": true,
+		"moduleResolution": "node",
+		"target": "ES2021",
+		"lib": ["ESNext"],
+		"sourceMap": true,
+		"removeComments": false,
+		"alwaysStrict": true,
+		"pretty": true,
+		"noEmitHelpers": true,
+		"importHelpers": true,
+		"skipLibCheck": true,
+		"esModuleInterop": true,
+		"sourceRoot": "./",
+		"rootDir": "./src",
+		"outDir": "dist"
+	},
+	"include": ["src"],
+	"exclude": ["**/*.test.ts"]
+}

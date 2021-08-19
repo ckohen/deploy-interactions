@@ -12,10 +12,17 @@
 		"importHelpers": true,
 		"skipLibCheck": true,
 		"esModuleInterop": true,
+		"module": "CommonJS",
+		"composite": true,
+		"declaration": true,
+		"declarationMap": true,
+		"preserveConstEnums": true,
+		"resolveJsonModule": true,
+		"importsNotUsedAsValues": "error",
 		"sourceRoot": "./",
-		"rootDir": "./src",
-		"outDir": "dist"
+		"rootDir": "./",
+		"outDir": "."
 	},
-	"include": ["src"],
+	"include": ["package.json"],
 	"exclude": ["**/*.test.ts"]
 }

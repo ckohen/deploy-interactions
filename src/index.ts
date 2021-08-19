@@ -1,1 +1,2 @@
-export * from './lib/deploy';
+export * from './lib/Deploy';
+export * from './bin/deploy-interactions';

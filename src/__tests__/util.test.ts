@@ -3,7 +3,7 @@ import {
 	RESTPostAPIChatInputApplicationCommandsJSONBody,
 	RESTPostAPIContextMenuApplicationCommandsJSONBody,
 } from 'discord-api-types';
-import { commandEquals, optionsEqual } from '../lib/util';
+import { commandEquals, optionsEqual } from '../lib/Util';
 
 const receivedChatCommand = {
 	id: '828935534738669580',

@@ -12,7 +12,7 @@ import {
 	Routes,
 	Snowflake,
 } from 'discord-api-types/v9';
-import { commandEquals } from './util';
+import { commandEquals } from './Util';
 
 /**
  * The configuration for a command to be deployed
@@ -278,7 +278,7 @@ async function deploySingleDestination(
 	if (bulk) {
 		// A promise rejection here is handled by the callee
 		const result = (await rest.put(route, { body: commands })) as RESTPutAPIApplicationCommandsResult;
-		console.log(chalk`{green Successfully} bulk updated.`);
+		console.log(chalk`{greenLight Successfully} bulk updated.`);
 		return { skipped: [], errored: [], commands: result };
 	}
 
@@ -287,6 +287,8 @@ async function deploySingleDestination(
 		// A promise rejection here is handled by the callee
 		existingCommands = (await rest.get(route)) as RESTGetAPIApplicationCommandsResult;
 	}
+
+	// TODO stop on encountering a 401 / 403? / 404?
 
 	const added: APIApplicationCommand[] = [];
 	const errored: ErroredCommand[] = [];

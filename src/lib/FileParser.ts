@@ -216,7 +216,7 @@ export function storeConfig(config: InteractionsDeployConfig, name: string): boo
 		delete mutableConfig.token;
 		let stringifiedConfig = JSON.stringify(mutableConfig, null, '\t');
 		if (name.endsWith('.js') || name.endsWith('.cjs')) {
-			stringifiedConfig = `module.exports = ${stringifiedConfig}`;
+			stringifiedConfig = `module.exports = ${stringifiedConfig.replace(/"(\w+?)"(?=:)/gi, '$1')}`;
 		}
 		writeFileSync(name, stringifiedConfig);
 		return true;

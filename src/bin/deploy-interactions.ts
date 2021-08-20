@@ -354,12 +354,14 @@ async function runAsync() {
 			if (config.commandDestinations) {
 				for (const [guild, deployConfig] of Object.entries(config.commandDestinations)) {
 					if (!deployConfig) continue;
-					if (guild === 'global' && !overrideOptions.global) {
+					if (guild === 'global') {
+						if (!overrideOptions.global) continue;
 						conf.global = deployConfig.some(
 							(c) =>
 								c.name === command.name &&
 								(c.type ?? ApplicationCommandType.ChatInput) === (command.type ?? ApplicationCommandType.ChatInput),
 						);
+						continue;
 					}
 					if (
 						deployConfig.some(

@@ -93,6 +93,10 @@ export interface DeployResponse {
 	 * Whether the deploy was run in dev mode
 	 */
 	dev?: boolean;
+	/**
+	 * If the entire process was halted due to unauth or similar, the error that was encountered
+	 */
+	error?: HTTPError | DiscordAPIError;
 }
 
 /**
@@ -195,10 +199,12 @@ export default async function deploy({
 			devGuildId,
 		).catch((err) => err)) as SingleDeployResponse | DiscordAPIError | HTTPError;
 		if (deployed instanceof Error) {
+			if ([401, 403, 404].includes(deployed.status)) return { guilds: new Map(), error: deployed, dev: true };
 			return {
 				guilds: new Map<string, SingleDeployResponse>([
 					[devGuildId, { bulkError: deployed, errored: [], skipped: [], commands: [] }],
 				]),
+				dev: true,
 			};
 		}
 		return { guilds: new Map<string, SingleDeployResponse>([[devGuildId, deployed]]), dev: true };
@@ -219,6 +225,8 @@ export default async function deploy({
 			| DiscordAPIError
 			| HTTPError;
 		if (deployed instanceof Error) {
+			// If the error is unauth or the unlikely 403 / 404, stop all future requests
+			if ([401, 403, 404].includes(deployed.status)) return { ...response, error: deployed };
 			response.global = { bulkError: deployed, errored: [], skipped: [], commands: [] };
 		} else {
 			response.global = deployed;
@@ -231,6 +239,8 @@ export default async function deploy({
 			(err) => err,
 		)) as SingleDeployResponse | DiscordAPIError | HTTPError;
 		if (deployed instanceof Error) {
+			// If the error is unauth, stop all future requests, 403 / 404 here can be different per guild
+			if (deployed.status === 401) return { ...response, error: deployed };
 			response.guilds.set(guildId, { bulkError: deployed, errored: [], skipped: [], commands: [] });
 		} else {
 			response.guilds.set(guildId, deployed);
@@ -292,7 +302,7 @@ async function deploySingleDestination(
 		existingCommands = (await rest.get(route)) as RESTGetAPIApplicationCommandsResult;
 	}
 
-	// TODO stop on encountering a 401 / 403? / 404?
+	// TODO stop on encountering a 401 / 403 / 404
 
 	const added: APIApplicationCommand[] = [];
 	const errored: ErroredCommand[] = [];
@@ -312,6 +322,8 @@ async function deploySingleDestination(
 			| DiscordAPIError
 			| HTTPError;
 		if (result instanceof Error) {
+			// Pass this up to callee as these errors indicate future requests will fail
+			if ([401, 403, 404].includes(result.status)) throw result;
 			errored.push({
 				name: command.name,
 				command,

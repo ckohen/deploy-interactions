@@ -298,30 +298,30 @@ async function runAsync() {
 		!('commandDestinations' in config) &&
 		(deployableCommands.length === 0 || deployableCommands.every((c) => !Boolean(c.guildIds?.length)))
 	) {
-		let getGuildsOnly = false;
+		let getGuildsOnly = true;
 		if (deployableCommands.length) {
 			// This can only be reached when global has been disabled and the commands config had no guilds configured
 			// Move all commands to definitions since we don't care about their global state and guilIds is empty
 			config.commandDefinitions = deployableCommands.map((c) => c.command);
 			deployableCommands = [];
-			getGuildsOnly = true;
 		}
 		const validNames = config.commandDefinitions!.map((c) => c.name);
 		console.log(chalk`{cyan Commands found}: {yellowBright ${validNames.join(', ')}}`);
 		// Determine whether this is first time setup, and if so, check global deploy config
-		const allGlobal =
-			overrideOptions.global && !getGuildsOnly
-				? await getYesNoInput('First, do you want all commands to be deployed globally?')
-				: false;
+		let deployAllGlobal = false;
+		if (overrideOptions.global) {
+			deployAllGlobal = await getYesNoInput('First, do you want all commands to be deployed globally?');
+			if (!deployAllGlobal) getGuildsOnly = false;
+		}
 
-		let globalCommands: InteractionsDeployCommandConfig[] = allGlobal
+		let globalCommands: InteractionsDeployCommandConfig[] = deployAllGlobal
 			? config.commandDefinitions!.map((c) => ({
 					name: c.name,
 					type: c.type ?? ApplicationCommandType.ChatInput,
 			  }))
 			: [];
 		const guildCommands = new Map<Snowflake, InteractionsDeployCommandConfig[]>();
-		if (!allGlobal && !getGuildsOnly) {
+		if (!deployAllGlobal && !getGuildsOnly) {
 			globalCommands = await getCommandNamesInput(validNames, config.commandDefinitions!);
 		}
 		let done = false;

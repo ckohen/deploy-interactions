@@ -129,7 +129,7 @@ export async function getCommands(
 		}
 	}
 	if (commands.length === 0 && finalCommands.length === 0) {
-		console.error(chalk`{green Debug} No commands found in all specified directories!`);
+		console.error(chalk`{redBright Error} No commands found in all specified directories!`);
 		error = true;
 	}
 	return {
@@ -178,9 +178,12 @@ async function getCommand(path: PathLike, named?: string): Promise<RESTPostAPIAp
 		data = JSON.parse(readFileSync(path, 'utf8'));
 	} else if (path.endsWith('.js') || path.endsWith('.cjs')) {
 		data = await import(`${process.cwd()}/${path}`);
+		if (typeof data.toJSON === 'function') {
+			data = data.toJSON();
+		}
 	}
 	if (data) {
-		data = named ? data.named : data;
+		data = named ? data[named] : data;
 		const likelyCommand = 'name' in data && ('description' in data || 'type' in data);
 		if (!likelyCommand) {
 			throw new TypeError(`Read command file ${path.toString()} but its export is not a command`);

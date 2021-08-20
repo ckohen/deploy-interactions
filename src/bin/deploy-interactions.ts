@@ -193,7 +193,7 @@ async function runAsync() {
 		storedConfig = (await getStoredConfig(overrideOptions.debug ?? false, overrideOptions.config)) ?? {};
 	} catch {
 		prompt.close();
-		process.exit();
+		process.exit(1);
 	}
 	const config: InteractionsDeployConfig = { ...DefaultConfig, ...storedConfig };
 
@@ -278,7 +278,7 @@ async function runAsync() {
 		);
 		if (error) {
 			prompt.close();
-			process.exit();
+			process.exit(1);
 		}
 
 		if (commands !== undefined) {
@@ -562,11 +562,18 @@ async function getInput(
 	options: InputOptions | (InputOptions & { validator: (input: string) => boolean }),
 ): Promise<string>;
 async function getInput<T = string>({ query, transformer, validator }: InputOptions<T>): Promise<T | string> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => {
+		controller.abort();
+		prompt.close();
+		console.error(chalk.red('No required input for 1 minute, exiting'));
+		process.exit(1);
+	}, 60_000).unref();
 	const response = await new Promise<string>((res) => {
-		prompt.question(`${query}: `, (input) => {
+		prompt.question(`${query}: `, { signal: controller.signal }, (input) => {
 			res(input);
 		});
-	});
+	}).finally(() => clearTimeout(timeout));
 	let output: T | string = response;
 	if (transformer) {
 		output = transformer(response);

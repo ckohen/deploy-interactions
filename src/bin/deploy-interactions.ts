@@ -9,6 +9,7 @@ import { ApplicationCommandType, RESTPostAPIApplicationCommandsJSONBody, Snowfla
 import { getCommands, getStoredConfig, storeConfig } from '../lib/FileParser';
 import chalk from 'chalk';
 import deploy, { ApplicationCommandConfig, CommandMap, DeployResponse } from '../lib/Deploy';
+import outputResults from '../lib/LogCompiler';
 
 /**
  * The configuration that can be used to deploy commands using the `deploy-interactions` commands
@@ -42,10 +43,14 @@ export interface InteractionsDeployConfig {
 	commands?: PathLike[] | PathLikeWithDestinationConfig[];
 	/**
 	 * Runs the deployment in debug mode, with much more verbose output
+	 *
+	 * *Enables `full` inhernetly*
 	 */
 	debug?: boolean;
 	/**
 	 * Whether to run deployment in dev mode (deploying all commands to a single guild regardless of other config)
+	 *
+	 * *Enables `full` inhernetly*
 	 */
 	developer?: boolean;
 	/**
@@ -54,6 +59,8 @@ export interface InteractionsDeployConfig {
 	devGuildId?: Snowflake;
 	/**
 	 * Skips the actual API deployment stage and outputs the full summary of deployment
+	 *
+	 * *Enables `full` inhernetly*
 	 */
 	dryRun?: boolean;
 	/**
@@ -61,9 +68,21 @@ export interface InteractionsDeployConfig {
 	 */
 	force?: boolean;
 	/**
+	 * Outputs the full compiled list after deployment
+	 *
+	 * *`dryRun`, `developer`, and `debug` also result in this behavior*
+	 */
+	full?: boolean;
+	/**
 	 * The name of the export in the command files, if the command definition is not the default export
 	 */
 	namedExport?: string;
+	/**
+	 * Enables printing summary view after deployment
+	 *
+	 * *Note: Summary will not display when `full` is enabled (`dryRun`, `developer`, and `debug` enable `full`)*
+	 */
+	summary?: boolean;
 	/**
 	 * The token to use for deploying to the specified application.
 	 *
@@ -131,9 +150,11 @@ interface CommandOptions {
 	developer?: boolean | string;
 	dryRun?: boolean;
 	force?: boolean;
+	full?: boolean;
 	global: boolean;
 	namedExport?: string;
 	store?: boolean | string;
+	summary: boolean;
 	token?: string;
 }
 
@@ -150,6 +171,8 @@ command
 	.option('--no-global', 'Disable global deployment, only deploy to guilds')
 	.option('-n, --named-export <name>', 'Use the specified name when looking for command exports')
 	.option('-r, --dry-run', 'Only runs file parsing logic and does not deploy to discord')
+	.option('--no-summary', 'Disable the output of the summary after deployment')
+	.option('--full', 'Enable output of the full deployment status')
 	.option(
 		'-s, --store [filename]',
 		'Store the generated configuration (excluding token) to .interactionsrc.json or the specified file',
@@ -389,7 +412,7 @@ async function runAsync() {
 		storeConfig(config, store);
 	}
 
-	let results: DeployResponse | null;
+	let results: DeployResponse | null = null;
 
 	if (!config.dryRun) {
 		const deployReady: CommandMap = new Map([
@@ -413,10 +436,13 @@ async function runAsync() {
 			force: config.force,
 			token: config.token!,
 		});
-		console.log(results);
 	}
 
-	// TODO output log
+	if (results === null) {
+		console.log('No commands found to deploy!');
+	} else {
+		outputResults(results, config.debug ?? false, config.dryRun ?? false, config.full ?? false, !config.summary);
+	}
 
 	// Close at end to not "close" the program, communicating unfinished state
 	prompt.close();
@@ -503,7 +529,9 @@ function mergeOverrides(output: InteractionsDeployConfig, input: CommandOptions)
 	}
 	if ('dryRun' in input) output.dryRun = input.dryRun;
 	if ('force' in input) output.force = input.force;
+	if ('full' in input) output.full = input.full;
 	if ('namedExport' in input) output.namedExport = input.namedExport;
+	if (!input.summary) output.summary = input.summary;
 	if ('token' in input) output.token = input.token;
 }
 

@@ -90,9 +90,9 @@ export interface DeployResponse {
 	 */
 	global?: SingleDeployResponse;
 	/**
-	 * Whether the deploy was run in dev mode
+	 * The id of the dev guild deploy if in dev mode
 	 */
-	dev?: boolean;
+	dev?: Snowflake;
 	/**
 	 * If the entire process was halted due to unauth or similar, the error that was encountered
 	 */
@@ -199,22 +199,22 @@ export default async function deploy({
 			devGuildId,
 		).catch((err) => err)) as SingleDeployResponse | DiscordAPIError | HTTPError;
 		if (deployed instanceof Error) {
-			if ([401, 403, 404].includes(deployed.status)) return { guilds: new Map(), error: deployed, dev: true };
+			if ([401, 403, 404].includes(deployed.status)) return { guilds: new Map(), error: deployed, dev: devGuildId };
 			return {
 				guilds: new Map<string, SingleDeployResponse>([
 					[devGuildId, { bulkError: deployed, errored: [], skipped: [], commands: [] }],
 				]),
-				dev: true,
+				dev: devGuildId,
 			};
 		}
-		return { guilds: new Map<string, SingleDeployResponse>([[devGuildId, deployed]]), dev: true };
+		return { guilds: new Map<string, SingleDeployResponse>([[devGuildId, deployed]]), dev: devGuildId };
 	}
 
 	// Separate commands into their destinations
 	const response: DeployResponse = {
 		guilds: new Map(),
 		global: undefined,
-		dev: false,
+		dev: undefined,
 	};
 	const { globalCommands, guildCommands: guildCommandsMap } =
 		separateGlobalGuild<RESTPostAPIApplicationCommandsJSONBody>(allCommands);
@@ -292,7 +292,7 @@ async function deploySingleDestination(
 	if (bulk) {
 		// A promise rejection here is handled by the callee
 		const result = (await rest.put(route, { body: commands })) as RESTPutAPIApplicationCommandsResult;
-		console.log(chalk`{greenLight Successfully} bulk updated.`);
+		console.log(chalk`{greenBright Successfully} bulk updated.`);
 		return { skipped: [], errored: [], commands: result };
 	}
 
@@ -301,8 +301,6 @@ async function deploySingleDestination(
 		// A promise rejection here is handled by the callee
 		existingCommands = (await rest.get(route)) as RESTGetAPIApplicationCommandsResult;
 	}
-
-	// TODO stop on encountering a 401 / 403 / 404
 
 	const added: APIApplicationCommand[] = [];
 	const errored: ErroredCommand[] = [];

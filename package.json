@@ -48,6 +48,7 @@
 		"commander": "^8.1.0",
 		"discord-api-types": "^0.23.0-next.fdc1c1a.1629117774",
 		"dotenv": "^10.0.0",
+		"table": "^6.7.1",
 		"tslib": "^2.3.1"
 	},
 	"devDependencies": {

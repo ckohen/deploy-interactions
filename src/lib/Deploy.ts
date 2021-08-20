@@ -195,9 +195,13 @@ export default async function deploy({
 			devGuildId,
 		).catch((err) => err)) as SingleDeployResponse | DiscordAPIError | HTTPError;
 		if (deployed instanceof Error) {
-			return { guilds: new Map([[devGuildId, { bulkOverwrite: deployed, errored: [], skipped: [], commands: [] }]]) };
+			return {
+				guilds: new Map<string, SingleDeployResponse>([
+					[devGuildId, { bulkError: deployed, errored: [], skipped: [], commands: [] }],
+				]),
+			};
 		}
-		return { guilds: new Map([[devGuildId, deployed]]), dev: true };
+		return { guilds: new Map<string, SingleDeployResponse>([[devGuildId, deployed]]), dev: true };
 	}
 
 	// Separate commands into their destinations

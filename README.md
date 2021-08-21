@@ -75,16 +75,19 @@ Another common use case is exporting the command definition as a named export. T
 
 ### Output Formats
 
-Sumamry View (Default)
-![Summary View](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/summary.png)
+#### Summary View (Default)
 
-Limited View (`--no-summary`)
-![Limited View](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/no-summary.png)
+![Summary View](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/summary.png?raw=true)
 
-Full View (`--full`) also gives more detailed errors for single command deploy errors.
-![Full View](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/full.png)
+#### Limited View (`--no-summary`)
 
-![Full View With Error](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/full-errored.png)
+![Limited View](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/no-summary.png?raw=true)
+
+#### Full View (`--full`) also gives more detailed errors for single command deploy errors.
+
+![Full View](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/full.png?raw=true)
+
+![Full View With Error](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/full-errored.png?raw=true)
 
 ### Configuration
 

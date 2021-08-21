@@ -21,7 +21,7 @@ export interface InteractionsDeployConfig {
 	 */
 	bulkOverwrite?: boolean;
 	/**
-	 * The client / application to deploy commands to
+	 * The id of the client / application to deploy commands to
 	 */
 	clientId?: Snowflake;
 	/**
@@ -101,6 +101,9 @@ const DefaultConfig: InteractionsDeployConfig = {
 	force: false,
 };
 
+/**
+ * The path and the destinations that all commands specified in the path will go to
+ */
 export interface PathLikeWithDestinationConfig {
 	/**
 	 * The path to the file(s) that uses this destination config

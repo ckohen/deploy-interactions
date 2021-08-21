@@ -73,6 +73,19 @@ Different projects can vary wildly in structure depending on need. As such your 
 
 Another common use case is exporting the command definition as a named export. This is handled via the `--named-export <name>` CLI argument or the `namedExport` config key. **All** exports must use the same key.
 
+### Output Formats
+
+Sumamry View (Default)
+![Summary View](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/summary.png)
+
+Limited View (`--no-summary`)
+![Limited View](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/no-summary.png)
+
+Full View (`--full`) also gives more detailed errors for single command deploy errors.
+![Full View](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/full.png)
+
+![Full View With Error](https://github.com/ckohen/deploy-interactions/blob/main/sample-output-images/full-errored.png)
+
 ### Configuration
 
 There are a few different ways to configure deployment.

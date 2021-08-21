@@ -444,7 +444,13 @@ async function runAsync() {
 	if (results === null) {
 		console.log('No commands found to deploy!');
 	} else {
-		outputResults(results, config.debug ?? false, config.dryRun ?? false, config.full ?? false, !config.summary);
+		outputResults(
+			results,
+			config.debug ?? false,
+			config.dryRun ?? false,
+			config.full ?? false,
+			!(config.summary ?? true),
+		);
 	}
 
 	// Close at end to not "close" the program, communicating unfinished state

@@ -13,7 +13,8 @@
 		"lint": "eslint src --ext mjs,js,ts",
 		"lint:fix": "eslint src --ext mjs,js,ts --fix",
 		"format": "prettier write **/*.{ts,js,json,yml,yaml}",
-		"prepare": "husky install"
+		"prepare": "husky install",
+		"prepublishOnly": "npm run build"
 	},
 	"repository": {
 		"type": "git",

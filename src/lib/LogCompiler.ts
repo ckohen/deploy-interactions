@@ -14,6 +14,10 @@ export default function outputResults(
 		console.log(chalk.redBright('Deployment Failed:'), debug ? results.error : results.error.message);
 		return;
 	}
+	if (!results.global && results.guilds.size === 0) {
+		console.log(chalk.cyanBright('No Commmands Deployed'));
+		return;
+	}
 	if (results.dev) {
 		outputFull(results.dev, results.guilds.get(results.dev)!, dryRun);
 		return;
@@ -41,7 +45,7 @@ export default function outputResults(
 				if (!failed && !success) break;
 			}
 		}
-		let status = chalk.yellow('Partall Successful');
+		let status = chalk.yellow('Partially Successful');
 		if (success) status = chalk.greenBright('Successful');
 		if (failed) status = chalk.redBright('Failed');
 		console.log(`Deploy Completed: ${status}`);

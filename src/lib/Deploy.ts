@@ -68,6 +68,10 @@ export interface DeployConfig {
 	 */
 	devGuildId?: Snowflake;
 	/**
+	 * Whether to skip all API calls
+	 */
+	dryRun?: boolean;
+	/**
 	 * Whether to skip equality checks for existing commands and just call the API
 	 */
 	force?: boolean;
@@ -140,13 +144,13 @@ export interface ErroredCommand {
 }
 
 /**
- * Represents a command that was not deployed as it was already up to date
+ * Represents a command that was not deployed as it was already up to date or it was a dry run
  */
 export interface SkippedCommand {
 	/**
 	 * The existing command from the API
 	 */
-	existing: APIApplicationCommand;
+	existing?: APIApplicationCommand;
 	/**
 	 * The command that was passed in and determined to be up to date
 	 */
@@ -158,7 +162,7 @@ export interface SkippedCommand {
 	/**
 	 * The id of the duplicate, up to date command
 	 */
-	id: Snowflake;
+	id?: Snowflake;
 }
 
 let clientId: string;
@@ -174,11 +178,19 @@ export default async function deploy({
 	bulkOverwrite = false,
 	commands,
 	devGuildId,
+	dryRun = false,
 	force = false,
 	token,
 }: DeployConfig): Promise<DeployResponse | null> {
 	clientId = applicationId;
-	rest.setToken(token);
+	if (dryRun) {
+		console.log(
+			chalk.magentaBright('This is a dry run, all logs suggesting an API call are not actually making calls'),
+		);
+	} else {
+		rest.setToken(token);
+	}
+
 	const chatCommands = commands.get(ApplicationCommandType.ChatInput) ?? [];
 	const userCommands = commands.get(ApplicationCommandType.User) ?? [];
 	const messageCommands = commands.get(ApplicationCommandType.Message) ?? [];
@@ -196,6 +208,7 @@ export default async function deploy({
 			allCommands.map((c) => c.command),
 			force,
 			bulkOverwrite,
+			dryRun,
 			devGuildId,
 		).catch((err) => err)) as SingleDeployResponse | DiscordAPIError | HTTPError;
 		if (deployed instanceof Error) {
@@ -220,10 +233,9 @@ export default async function deploy({
 		separateGlobalGuild<RESTPostAPIApplicationCommandsJSONBody>(allCommands);
 	// Deploy Global commands
 	if (globalCommands.length > 0) {
-		const deployed = (await deploySingleDestination(globalCommands, force, bulkOverwrite).catch((err) => err)) as
-			| SingleDeployResponse
-			| DiscordAPIError
-			| HTTPError;
+		const deployed = (await deploySingleDestination(globalCommands, force, bulkOverwrite, dryRun).catch(
+			(err) => err,
+		)) as SingleDeployResponse | DiscordAPIError | HTTPError;
 		if (deployed instanceof Error) {
 			// If the error is unauth or the unlikely 403 / 404, stop all future requests
 			if ([401, 403, 404].includes(deployed.status)) return { ...response, error: deployed };
@@ -235,7 +247,7 @@ export default async function deploy({
 
 	// Deploy Guild Commands
 	for (const [guildId, guildCommands] of guildCommandsMap) {
-		const deployed = (await deploySingleDestination(guildCommands, force, bulkOverwrite, guildId).catch(
+		const deployed = (await deploySingleDestination(guildCommands, force, bulkOverwrite, dryRun, guildId).catch(
 			(err) => err,
 		)) as SingleDeployResponse | DiscordAPIError | HTTPError;
 		if (deployed instanceof Error) {
@@ -285,10 +297,19 @@ async function deploySingleDestination(
 	commands: RESTPostAPIApplicationCommandsJSONBody[],
 	force: boolean,
 	bulk: boolean,
+	dryRun: boolean,
 	guildId?: Snowflake,
 ): Promise<SingleDeployResponse> {
 	const route = guildId ? Routes.applicationGuildCommands(clientId, guildId) : Routes.applicationCommands(clientId);
 	console.log(`${bulk ? chalk.red('Overwriting') : 'Deploying'} commands ${guildId ? `to ${guildId}` : 'globally'}.`);
+	if (dryRun) {
+		if (bulk) {
+			console.log(chalk`{greenBright Successfully} bulk updated.`);
+		} else {
+			console.log(`Finished ${guildId ? `guild (${guildId})` : 'global'} deploy`);
+		}
+		return { skipped: commands.map((c) => ({ name: c.name, command: c })), errored: [], commands: [] };
+	}
 	if (bulk) {
 		// A promise rejection here is handled by the callee
 		const result = (await rest.put(route, { body: commands })) as RESTPutAPIApplicationCommandsResult;

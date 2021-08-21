@@ -112,7 +112,7 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 		}
 		for (const skipped of data.skipped) {
 			outputData.push([
-				TypeNames[skipped.existing.type],
+				TypeNames[skipped.existing!.type],
 				skipped.name,
 				skipped.id,
 				// @ts-ignore

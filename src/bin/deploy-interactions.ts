@@ -417,29 +417,28 @@ async function runAsync() {
 
 	let results: DeployResponse | null = null;
 
-	if (!config.dryRun) {
-		const deployReady: CommandMap = new Map([
-			[
-				ApplicationCommandType.ChatInput,
-				deployableCommands.filter(
-					(c) => (c.command.type ?? ApplicationCommandType.ChatInput) === ApplicationCommandType.ChatInput,
-				),
-			],
-			[ApplicationCommandType.User, deployableCommands.filter((c) => c.command.type === ApplicationCommandType.User)],
-			[
-				ApplicationCommandType.Message,
-				deployableCommands.filter((c) => c.command.type === ApplicationCommandType.Message),
-			],
-		]) as CommandMap;
-		results = await deploy({
-			applicationId: config.clientId!,
-			bulkOverwrite: config.bulkOverwrite,
-			commands: deployReady,
-			devGuildId: config.developer ? config.devGuildId : undefined,
-			force: config.force,
-			token: config.token!,
-		});
-	}
+	const deployReady: CommandMap = new Map([
+		[
+			ApplicationCommandType.ChatInput,
+			deployableCommands.filter(
+				(c) => (c.command.type ?? ApplicationCommandType.ChatInput) === ApplicationCommandType.ChatInput,
+			),
+		],
+		[ApplicationCommandType.User, deployableCommands.filter((c) => c.command.type === ApplicationCommandType.User)],
+		[
+			ApplicationCommandType.Message,
+			deployableCommands.filter((c) => c.command.type === ApplicationCommandType.Message),
+		],
+	]) as CommandMap;
+	results = await deploy({
+		applicationId: config.clientId!,
+		bulkOverwrite: config.bulkOverwrite,
+		commands: deployReady,
+		devGuildId: config.developer ? config.devGuildId : undefined,
+		dryRun: config.dryRun,
+		force: config.force,
+		token: config.token!,
+	});
 
 	if (results === null) {
 		console.log('No commands found to deploy!');

@@ -4,6 +4,8 @@
 	"description": "An executable library for registering discord application commands via @discordjs/rest",
 	"author": "ckohen",
 	"license": "Apache-2.0",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
 	"scripts": {
 		"pretest": "npm run build",
 		"test": "jest",
@@ -38,7 +40,7 @@
 	},
 	"directories": {
 		"lib": "src",
-		"test": "__tests__"
+		"test": "src/__tests__"
 	},
 	"files": [
 		"dist"

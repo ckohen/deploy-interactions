@@ -1,29 +1,96 @@
 import {
 	APIApplicationCommand,
 	APIApplicationCommandOption,
-	APIApplicationCommandArgumentOptions,
 	ApplicationCommandOptionType,
 	ApplicationCommandType,
 	RESTPostAPIApplicationCommandsJSONBody,
-	APIApplicationCommandSubCommandOptions,
-} from 'discord-api-types/v9';
+	APIApplicationCommandSubcommandOption,
+	APIApplicationCommandChannelOption,
+	APIApplicationCommandStringOption,
+	APIApplicationCommandIntegerOption,
+	APIApplicationCommandNumberOption,
+	APIApplicationCommandOptionChoice,
+} from 'discord-api-types/v10';
 
-export function commandEquals(existing: APIApplicationCommand, command: RESTPostAPIApplicationCommandsJSONBody) {
+import { default as isEqual } from 'fast-deep-equal';
+
+export type APIApplicationCommandChoicesOption =
+	| APIApplicationCommandStringOption
+	| APIApplicationCommandIntegerOption
+	| APIApplicationCommandNumberOption;
+
+export function isChoicesOption(option: APIApplicationCommandOption): option is APIApplicationCommandChoicesOption {
+	return (
+		option.type === ApplicationCommandOptionType.String ||
+		option.type === ApplicationCommandOptionType.Integer ||
+		option.type === ApplicationCommandOptionType.Number
+	);
+}
+
+export function isSubcommandOption(
+	option: APIApplicationCommandOption,
+): option is APIApplicationCommandSubcommandOption {
+	return (
+		option.type === ApplicationCommandOptionType.SubcommandGroup ||
+		option.type === ApplicationCommandOptionType.Subcommand
+	);
+}
+
+export function isChannelOption(option: APIApplicationCommandOption): option is APIApplicationCommandChannelOption {
+	return option.type === ApplicationCommandOptionType.Channel;
+}
+
+export function isNumericalOption(
+	option: APIApplicationCommandOption,
+): option is APIApplicationCommandIntegerOption | APIApplicationCommandNumberOption {
+	return option.type === ApplicationCommandOptionType.Integer || option.type === ApplicationCommandOptionType.Number;
+}
+
+export function optionEquals(existing: APIApplicationCommandOption, option: APIApplicationCommandOption) {
 	if (
-		command.name !== existing.name ||
-		('description' in command && command.description !== existing.description) ||
-		// Discord API defaults type to chat input
-		(command.type ?? ApplicationCommandType.ChatInput) !== existing.type ||
-		command.options?.length !== existing.options?.length ||
-		// Discord API defaults this to true
-		(command.default_permission ?? true) !== existing.default_permission
+		option.name !== existing.name ||
+		option.type !== existing.type ||
+		option.description !== existing.description ||
+		(option.required ?? false) !== (existing.required ?? false) ||
+		!isEqual(existing.name_localizations ?? {}, option.name_localizations ?? {}) ||
+		!isEqual(existing.description_localizations ?? {}, option.description_localizations ?? {})
 	) {
 		return false;
 	}
-
-	if (command.options && existing.options) {
-		return optionsEqual(existing.options, command.options);
+	if (isChoicesOption(existing) && isChoicesOption(option)) {
+		if (existing.autocomplete !== option.autocomplete) return false;
+		const existingChoices = (existing as APIApplicationCommandChoicesOption & { autocomplete?: false }).choices;
+		const optionChoices = (option as APIApplicationCommandChoicesOption & { autocomplete?: false }).choices;
+		if (existingChoices?.length !== optionChoices?.length) return false;
+		if (existingChoices && optionChoices) {
+			for (const choice of existingChoices) {
+				const foundChoice = (optionChoices as APIApplicationCommandOptionChoice[]).find((c) => c.name === choice.name);
+				if (!foundChoice || foundChoice.value !== choice.value) return false;
+			}
+		}
 	}
+
+	if (isSubcommandOption(existing) && isSubcommandOption(option)) {
+		if (existing.options?.length !== option.options?.length) return false;
+		if (existing.options && option.options) {
+			// eslint-disable-next-line @typescript-eslint/no-use-before-define
+			return optionsEqual(existing.options, option.options);
+		}
+	}
+
+	if (isChannelOption(existing) && isChannelOption(option)) {
+		if (existing.channel_types?.length !== option.channel_types?.length) return false;
+		if (existing.channel_types && option.channel_types) {
+			for (const type of existing.channel_types) {
+				if (!option.channel_types.includes(type)) return false;
+			}
+		}
+	}
+
+	if (isNumericalOption(existing) && isNumericalOption(option)) {
+		if (existing.min_value !== option.min_value || existing.max_value !== option.max_value) return false;
+	}
+
 	return true;
 }
 
@@ -36,47 +103,23 @@ export function optionsEqual(existing: APIApplicationCommandOption[], options: A
 	return true;
 }
 
-export function optionEquals(existing: APIApplicationCommandOption, option: APIApplicationCommandOption) {
+export function commandEquals(existing: APIApplicationCommand, command: RESTPostAPIApplicationCommandsJSONBody) {
 	if (
-		option.name !== existing.name ||
-		option.type !== existing.type ||
-		option.description !== existing.description ||
-		(option.required ?? false) !== (existing.required ?? false)
+		command.name !== existing.name ||
+		('description' in command && command.description !== existing.description) ||
+		// Discord API defaults type to chat input
+		(command.type ?? ApplicationCommandType.ChatInput) !== existing.type ||
+		command.options?.length !== existing.options?.length ||
+		command.default_member_permissions !== existing.default_member_permissions ||
+		(command.dm_permission ?? true) !== existing.dm_permission ||
+		!isEqual(existing.name_localizations ?? {}, command.name_localizations ?? {}) ||
+		!isEqual(existing.description_localizations ?? {}, command.description_localizations ?? {})
 	) {
 		return false;
 	}
-	if (isArgumentoption(existing) && isArgumentoption(option)) {
-		if (existing.choices?.length !== option.choices?.length) return false;
-		if (existing.choices && option.choices) {
-			for (const choice of existing.choices) {
-				const foundChoice = option.choices.find((c) => c.name === choice.name);
-				if (!foundChoice || foundChoice.value !== choice.value) return false;
-			}
-		}
-	}
 
-	if (isSubcommandOption(existing) && isSubcommandOption(option)) {
-		if (existing.options?.length !== option.options?.length) return false;
-		if (existing.options && option.options) {
-			return optionsEqual(existing.options, option.options);
-		}
+	if (command.options && existing.options) {
+		return optionsEqual(existing.options, command.options);
 	}
 	return true;
-}
-
-export function isArgumentoption(option: APIApplicationCommandOption): option is APIApplicationCommandArgumentOptions {
-	return (
-		option.type === ApplicationCommandOptionType.String ||
-		option.type === ApplicationCommandOptionType.Integer ||
-		option.type === ApplicationCommandOptionType.Number
-	);
-}
-
-export function isSubcommandOption(
-	option: APIApplicationCommandOption,
-): option is APIApplicationCommandSubCommandOptions {
-	return (
-		option.type === ApplicationCommandOptionType.SubcommandGroup ||
-		option.type === ApplicationCommandOptionType.Subcommand
-	);
 }

@@ -1,7 +1,65 @@
 import chalk from 'chalk';
-import { ApplicationCommandType, Snowflake } from 'discord-api-types/v9';
+import { ApplicationCommandType, Snowflake } from 'discord-api-types/v10';
 import { table } from 'table';
 import type { DeployResponse, SingleDeployResponse } from './Deploy';
+
+const TypeNames = {
+	[ApplicationCommandType.ChatInput]: 'Chat Input',
+	[ApplicationCommandType.User]: 'User',
+	[ApplicationCommandType.Message]: 'Message',
+};
+
+function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, dry: boolean): void {
+	if (data.bulkError) {
+		console.log(chalk`Deploy to ${guildId} {redBright failed}: ${data.bulkError.message}`);
+		return;
+	}
+	let header = chalk`Deploy to ${guildId} {greenBright successful}`;
+	if (data.errored.length) {
+		header = chalk`Deploy to ${guildId} {yellow partially successful}`;
+	}
+	let outputData: string[][];
+	if (dry) {
+		outputData = [['Type', 'Name', 'Status']];
+		for (const skipped of data.skipped) {
+			outputData.push([
+				TypeNames[skipped.command.type ?? ApplicationCommandType.ChatInput],
+				skipped.name,
+				chalk`{yellow Skipped} (Dry Run)`,
+			]);
+		}
+	} else {
+		outputData = [['Type', 'Name', 'ID', 'Version', 'Status']];
+		for (const command of data.commands) {
+			outputData.push([
+				TypeNames[command.type],
+				command.name,
+				command.id,
+				command.version,
+				chalk.greenBright('Success'),
+			]);
+		}
+		for (const skipped of data.skipped) {
+			outputData.push([
+				TypeNames[skipped.existing!.type],
+				skipped.name,
+				skipped.id!,
+				skipped.existing!.version,
+				chalk`{yellow Skipped} (Matched Existing)`,
+			]);
+		}
+		for (const errored of data.errored) {
+			outputData.push([
+				TypeNames[errored.command.type ?? ApplicationCommandType.ChatInput],
+				errored.name,
+				'N/A',
+				'N/A',
+				chalk`{redBright Failed} (${errored.error.message})`,
+			]);
+		}
+	}
+	console.log(table(outputData, { columnDefault: { width: 30, wrapWord: true }, header: { content: header } }));
+}
 
 export default function outputResults(
 	results: DeployResponse,
@@ -71,64 +129,4 @@ export default function outputResults(
 		]);
 	}
 	console.log(table(outputData, { columnDefault: { width: 30, wrapWord: true }, header: { content: 'Summary' } }));
-}
-
-const TypeNames = {
-	[ApplicationCommandType.ChatInput]: 'Chat Input',
-	[ApplicationCommandType.User]: 'User',
-	[ApplicationCommandType.Message]: 'Message',
-};
-
-function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, dry: boolean): void {
-	if (data.bulkError) {
-		console.log(chalk`Deploy to ${guildId} {redBright failed}: ${data.bulkError.message}`);
-		return;
-	}
-	let header = chalk`Deploy to ${guildId} {greenBright successful}`;
-	if (data.errored.length) {
-		header = chalk`Deploy to ${guildId} {yellow partially successful}`;
-	}
-	let outputData: string[][];
-	if (dry) {
-		outputData = [['Type', 'Name', 'Status']];
-		for (const skipped of data.skipped) {
-			outputData.push([
-				TypeNames[skipped.command.type ?? ApplicationCommandType.ChatInput],
-				skipped.name,
-				chalk`{yellow Skipped} (Dry Run)`,
-			]);
-		}
-	} else {
-		outputData = [['Type', 'Name', 'ID', 'Version', 'Status']];
-		for (const command of data.commands) {
-			outputData.push([
-				TypeNames[command.type],
-				command.name,
-				command.id,
-				// @ts-ignore
-				command.version,
-				chalk.greenBright('Success'),
-			]);
-		}
-		for (const skipped of data.skipped) {
-			outputData.push([
-				TypeNames[skipped.existing!.type],
-				skipped.name,
-				skipped.id,
-				// @ts-ignore
-				skipped.existing.version,
-				chalk`{yellow Skipped} (Matched Existing)`,
-			]);
-		}
-		for (const errored of data.errored) {
-			outputData.push([
-				TypeNames[errored.command.type ?? ApplicationCommandType.ChatInput],
-				errored.name,
-				'N/A',
-				'N/A',
-				chalk`{redBright Failed} (${errored.error.message})`,
-			]);
-		}
-	}
-	console.log(table(outputData, { columnDefault: { width: 30, wrapWord: true }, header: { content: header } }));
 }

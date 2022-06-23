@@ -11,7 +11,7 @@ import {
 	RESTPutAPIApplicationCommandsResult,
 	Routes,
 	Snowflake,
-} from 'discord-api-types/v9';
+} from 'discord-api-types/v10';
 import { commandEquals } from './Util';
 
 /**
@@ -37,12 +37,12 @@ export interface ApplicationCommandConfig<CommandType extends RESTPostAPIApplica
  */
 export interface CommandMap
 	extends Map<ApplicationCommandType, ApplicationCommandConfig<RESTPostAPIApplicationCommandsJSONBody>[]> {
-	get(
+	get: ((
 		key: ApplicationCommandType.ChatInput,
-	): ApplicationCommandConfig<RESTPostAPIChatInputApplicationCommandsJSONBody>[] | undefined;
-	get(
-		key: ApplicationCommandType.Message | ApplicationCommandType.User,
-	): ApplicationCommandConfig<RESTPostAPIContextMenuApplicationCommandsJSONBody>[] | undefined;
+	) => ApplicationCommandConfig<RESTPostAPIChatInputApplicationCommandsJSONBody>[] | undefined) &
+		((
+			key: ApplicationCommandType.Message | ApplicationCommandType.User,
+		) => ApplicationCommandConfig<RESTPostAPIContextMenuApplicationCommandsJSONBody>[] | undefined);
 }
 
 /**
@@ -166,100 +166,7 @@ export interface SkippedCommand {
 }
 
 let clientId: string;
-const rest = new REST({ version: '9' });
-
-/**
- * Deploys a set of application commands
- * @param config The configuration options for deploying
- * @returns The results of the deploy
- */
-export default async function deploy({
-	applicationId,
-	bulkOverwrite = false,
-	commands,
-	devGuildId,
-	dryRun = false,
-	force = false,
-	token,
-}: DeployConfig): Promise<DeployResponse | null> {
-	clientId = applicationId;
-	if (dryRun) {
-		console.log(
-			chalk.magentaBright('This is a dry run, all logs suggesting an API call are not actually making calls'),
-		);
-	} else {
-		rest.setToken(token);
-	}
-
-	const chatCommands = commands.get(ApplicationCommandType.ChatInput) ?? [];
-	const userCommands = commands.get(ApplicationCommandType.User) ?? [];
-	const messageCommands = commands.get(ApplicationCommandType.Message) ?? [];
-	const allCommands = [...chatCommands, ...userCommands, ...messageCommands];
-	if (allCommands.length === 0) {
-		return null;
-	}
-
-	// Deploy in Dev mode
-	if (devGuildId) {
-		console.log(
-			chalk.blueBright(`Operating in dev mode, all ${allCommands.length} commands deploying to ${devGuildId}.`),
-		);
-		const deployed = (await deploySingleDestination(
-			allCommands.map((c) => c.command),
-			force,
-			bulkOverwrite,
-			dryRun,
-			devGuildId,
-		).catch((err) => err)) as SingleDeployResponse | DiscordAPIError | HTTPError;
-		if (deployed instanceof Error) {
-			if ([401, 403, 404].includes(deployed.status)) return { guilds: new Map(), error: deployed, dev: devGuildId };
-			return {
-				guilds: new Map<string, SingleDeployResponse>([
-					[devGuildId, { bulkError: deployed, errored: [], skipped: [], commands: [] }],
-				]),
-				dev: devGuildId,
-			};
-		}
-		return { guilds: new Map<string, SingleDeployResponse>([[devGuildId, deployed]]), dev: devGuildId };
-	}
-
-	// Separate commands into their destinations
-	const response: DeployResponse = {
-		guilds: new Map(),
-		global: undefined,
-		dev: undefined,
-	};
-	const { globalCommands, guildCommands: guildCommandsMap } =
-		separateGlobalGuild<RESTPostAPIApplicationCommandsJSONBody>(allCommands);
-	// Deploy Global commands
-	if (globalCommands.length > 0) {
-		const deployed = (await deploySingleDestination(globalCommands, force, bulkOverwrite, dryRun).catch(
-			(err) => err,
-		)) as SingleDeployResponse | DiscordAPIError | HTTPError;
-		if (deployed instanceof Error) {
-			// If the error is unauth or the unlikely 403 / 404, stop all future requests
-			if ([401, 403, 404].includes(deployed.status)) return { ...response, error: deployed };
-			response.global = { bulkError: deployed, errored: [], skipped: [], commands: [] };
-		} else {
-			response.global = deployed;
-		}
-	}
-
-	// Deploy Guild Commands
-	for (const [guildId, guildCommands] of guildCommandsMap) {
-		const deployed = (await deploySingleDestination(guildCommands, force, bulkOverwrite, dryRun, guildId).catch(
-			(err) => err,
-		)) as SingleDeployResponse | DiscordAPIError | HTTPError;
-		if (deployed instanceof Error) {
-			// If the error is unauth, stop all future requests, 403 / 404 here can be different per guild
-			if (deployed.status === 401) return { ...response, error: deployed };
-			response.guilds.set(guildId, { bulkError: deployed, errored: [], skipped: [], commands: [] });
-		} else {
-			response.guilds.set(guildId, deployed);
-		}
-	}
-	return response;
-}
+const rest = new REST({ version: '10' });
 
 /**
  * Separates global commands from guild commands based on their configuration
@@ -336,7 +243,7 @@ async function deploySingleDestination(
 				continue;
 			}
 		}
-		const result = (await rest.post(route, { body: command }).catch((err) => err)) as
+		const result = (await rest.post(route, { body: command }).catch((err) => err as DiscordAPIError | HTTPError)) as
 			| RESTPostAPIApplicationCommandsResult
 			| DiscordAPIError
 			| HTTPError;
@@ -354,4 +261,97 @@ async function deploySingleDestination(
 	}
 	console.log(`Finished ${guildId ? `guild (${guildId})` : 'global'} deploy`);
 	return { commands: added, errored, skipped };
+}
+
+/**
+ * Deploys a set of application commands
+ * @param config The configuration options for deploying
+ * @returns The results of the deploy
+ */
+export default async function deploy({
+	applicationId,
+	bulkOverwrite = false,
+	commands,
+	devGuildId,
+	dryRun = false,
+	force = false,
+	token,
+}: DeployConfig): Promise<DeployResponse | null> {
+	clientId = applicationId;
+	if (dryRun) {
+		console.log(
+			chalk.magentaBright('This is a dry run, all logs suggesting an API call are not actually making calls'),
+		);
+	} else {
+		rest.setToken(token);
+	}
+
+	const chatCommands = commands.get(ApplicationCommandType.ChatInput) ?? [];
+	const userCommands = commands.get(ApplicationCommandType.User) ?? [];
+	const messageCommands = commands.get(ApplicationCommandType.Message) ?? [];
+	const allCommands = [...chatCommands, ...userCommands, ...messageCommands];
+	if (allCommands.length === 0) {
+		return null;
+	}
+
+	// Deploy in Dev mode
+	if (devGuildId) {
+		console.log(
+			chalk.blueBright(`Operating in dev mode, all ${allCommands.length} commands deploying to ${devGuildId}.`),
+		);
+		const deployed = await deploySingleDestination(
+			allCommands.map((c) => c.command),
+			force,
+			bulkOverwrite,
+			dryRun,
+			devGuildId,
+		).catch((err) => err as DiscordAPIError | HTTPError);
+		if (deployed instanceof Error) {
+			if ([401, 403, 404].includes(deployed.status)) return { guilds: new Map(), error: deployed, dev: devGuildId };
+			return {
+				guilds: new Map<string, SingleDeployResponse>([
+					[devGuildId, { bulkError: deployed, errored: [], skipped: [], commands: [] }],
+				]),
+				dev: devGuildId,
+			};
+		}
+		return { guilds: new Map<string, SingleDeployResponse>([[devGuildId, deployed]]), dev: devGuildId };
+	}
+
+	// Separate commands into their destinations
+	const response: DeployResponse = {
+		guilds: new Map(),
+		global: undefined,
+		dev: undefined,
+	};
+	const { globalCommands, guildCommands: guildCommandsMap } =
+		separateGlobalGuild<RESTPostAPIApplicationCommandsJSONBody>(allCommands);
+	// Deploy Global commands
+	if (globalCommands.length > 0) {
+		const deployed = await deploySingleDestination(globalCommands, force, bulkOverwrite, dryRun).catch(
+			(err) => err as DiscordAPIError | HTTPError,
+		);
+		if (deployed instanceof Error) {
+			// If the error is unauth or the unlikely 403 / 404, stop all future requests
+			if ([401, 403, 404].includes(deployed.status)) return { ...response, error: deployed };
+			response.global = { bulkError: deployed, errored: [], skipped: [], commands: [] };
+		} else {
+			response.global = deployed;
+		}
+	}
+
+	// Deploy Guild Commands
+	for (const [guildId, guildCommands] of guildCommandsMap) {
+		const deployed = await deploySingleDestination(guildCommands, force, bulkOverwrite, dryRun, guildId).catch(
+			(err) => err as DiscordAPIError | HTTPError,
+		);
+		if (deployed instanceof Error) {
+			// If the error is unauth, stop all future requests, 403 / 404 here can be different per guild
+			if (deployed.status === 401) return { ...response, error: deployed };
+			response.guilds.set(guildId, { bulkError: deployed, errored: [], skipped: [], commands: [] });
+		} else {
+			response.guilds.set(guildId, deployed);
+		}
+	}
+	return response;
 }

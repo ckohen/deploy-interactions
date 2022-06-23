@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
-import { createInterface as createPrompt } from 'readline';
-import { version } from '../../package.json';
-import * as dotenv from 'dotenv';
-import { existsSync, PathLike } from 'fs';
-import { ApplicationCommandType, RESTPostAPIApplicationCommandsJSONBody, Snowflake } from 'discord-api-types/v9';
-import { getCommands, getStoredConfig, storeConfig } from '../lib/FileParser';
+import { existsSync, PathLike } from 'node:fs';
+import { createInterface as createPrompt } from 'node:readline';
 import chalk from 'chalk';
+import { Command } from 'commander';
+import { ApplicationCommandType, RESTPostAPIApplicationCommandsJSONBody, Snowflake } from 'discord-api-types/v10';
+import * as dotenv from 'dotenv';
+import { version } from '../../package.json';
 import deploy, { ApplicationCommandConfig, CommandMap, DeployResponse } from '../lib/Deploy';
+import { getCommands, getStoredConfig, storeConfig } from '../lib/FileParser';
 import outputResults from '../lib/LogCompiler';
 
 /**
@@ -199,6 +199,178 @@ const prompt = createPrompt({
 	input: process.stdin,
 	output: process.stdout,
 });
+
+// Utility functions
+function mergeOverrides(output: InteractionsDeployConfig, input: CommandOptions) {
+	if ('bulkOverwrite' in input) output.bulkOverwrite = input.bulkOverwrite;
+	if ('clientId' in input) output.clientId = input.clientId;
+	if ('commands' in input) output.commands = input.commands;
+	if ('debug' in input) output.debug = input.debug;
+	if ('developer' in input) {
+		output.developer = true;
+		if (typeof input.developer === 'string') {
+			output.devGuildId = input.developer;
+		}
+	} else if (!('developer' in output)) {
+		output.developer = false;
+	}
+	if ('dryRun' in input) output.dryRun = input.dryRun;
+	if ('force' in input) output.force = input.force;
+	if ('full' in input) output.full = input.full;
+	if ('namedExport' in input) output.namedExport = input.namedExport;
+	if (!input.summary) output.summary = input.summary;
+	if ('token' in input) output.token = input.token;
+}
+
+interface InputOptions<T = string> {
+	query: string;
+	transformer?: (input: string) => T;
+	validator?: (input: T | string) => boolean;
+}
+
+async function getInput<T>(
+	options:
+		| (InputOptions<T> & { transformer: (input: string) => T })
+		| (InputOptions<T> & { transformer: (input: string) => T; validator: (input: T) => boolean }),
+): Promise<T>;
+async function getInput(
+	options: InputOptions | (InputOptions & { validator: (input: string) => boolean }),
+): Promise<string>;
+async function getInput<T = string>({ query, transformer, validator }: InputOptions<T>): Promise<T | string> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => {
+		controller.abort();
+		prompt.close();
+		console.error(chalk.red('No required input for 1 minute, exiting'));
+		process.exit(1);
+	}, 60_000).unref();
+	const response = await new Promise<string>((res) => {
+		prompt.question(`${query}: `, { signal: controller.signal }, (input) => {
+			res(input);
+		});
+	}).finally(() => clearTimeout(timeout));
+	let output: T | string = response;
+	if (transformer) {
+		output = transformer(response);
+	}
+
+	if (validator) {
+		if (!validator(output)) {
+			if (transformer) {
+				return getInput<T>({ query, transformer, validator });
+			}
+
+			return getInput({ query, validator });
+		}
+	}
+
+	return output;
+}
+
+async function getYesNoInput(query: string): Promise<boolean> {
+	const out = await getInput<boolean | null>({
+		query: `${query} (Y/N)`,
+		transformer: (input) => {
+			if (input.toLowerCase() === 'y') return true;
+			if (input.toLowerCase() === 'n') return false;
+			return null;
+		},
+		validator: (input) => {
+			if (input === null) return false;
+			return true;
+		},
+	});
+	// Something went really wrong
+	if (out === null) throw new Error('Received null when it should not possible');
+	return out;
+}
+
+async function disambiguate(
+	names: string[],
+	commands: RESTPostAPIApplicationCommandsJSONBody[],
+): Promise<InteractionsDeployCommandConfig[]> {
+	const disambiguated: InteractionsDeployCommandConfig[] = [];
+	const TypeNames = {
+		[ApplicationCommandType.ChatInput]: 'Chat Input Command',
+		[ApplicationCommandType.User]: 'User Command',
+		[ApplicationCommandType.Message]: 'Message Command',
+	};
+	for (const name of names) {
+		const possibleCommands = commands.filter((c) => c.name === name);
+		if (possibleCommands.length === 1) {
+			disambiguated.push({ name, type: possibleCommands[0].type ?? ApplicationCommandType.ChatInput });
+			continue;
+		}
+		// Compile type list: Chat Input Command, User Command, and Message Command
+		const commandTypes = possibleCommands.reduce((str, current, i) => {
+			const currentName = TypeNames[current.type ?? ApplicationCommandType.ChatInput];
+			switch (i) {
+				case 0:
+					return currentName;
+				case 1:
+					if (possibleCommands.length === 2) return `${str} and ${currentName}`;
+				case possibleCommands.length - 1:
+					return `${str}, and ${currentName}`;
+				default:
+					return `${str}, ${currentName}`;
+			}
+		}, '');
+		// Get the type that the user wants to keep
+		console.log(`The name ${name} matches commands with types ${commandTypes}.`);
+		const keepType = await getInput<ApplicationCommandType | 0 | -1>({
+			query: `Please enter the first letter (e.g. u for user) of the type of command that this config is for (or a for all)`,
+			transformer: (input) => {
+				if (!['a', 'c', 'm', 'u'].includes(input.toLowerCase())) return -1;
+				switch (input.toLowerCase()) {
+					case 'c':
+						return ApplicationCommandType.ChatInput;
+					case 'u':
+						return ApplicationCommandType.User;
+					case 'm':
+						return ApplicationCommandType.Message;
+					case 'a':
+						return 0;
+					default:
+						return -1;
+				}
+			},
+			validator: (input) => input !== -1,
+		});
+		// User wants all
+		if (keepType === 0) {
+			for (const command of possibleCommands) {
+				disambiguated.push({ name, type: command.type ?? ApplicationCommandType.ChatInput });
+			}
+			continue;
+		}
+		disambiguated.push({ name, type: keepType });
+	}
+	return disambiguated;
+}
+
+async function getCommandNamesInput(
+	validNames: string[],
+	commandDefinitions: RESTPostAPIApplicationCommandsJSONBody[],
+	guildId?: Snowflake,
+): Promise<InteractionsDeployCommandConfig[]> {
+	const destination = guildId ? `to ${guildId}` : 'globally';
+	const commandNames = await getInput<string[]>({
+		query: `In a space separated list, enter the names of the commands which should be deployed ${destination}`,
+		transformer: (input) => input.split(' '),
+		validator: (input) => {
+			if (!Boolean(input.length)) return false;
+			for (const name of input as string[]) {
+				if (!validNames.includes(name)) {
+					console.log(chalk.redBright(`Unknown command (name: ${name}), please enter the list again`));
+					return false;
+				}
+			}
+			return true;
+		},
+	});
+	const commands = await disambiguate(commandNames, commandDefinitions);
+	return commands;
+}
 
 async function runAsync() {
 	let store: string | null =
@@ -457,175 +629,3 @@ async function runAsync() {
 }
 
 void runAsync().catch(console.error);
-
-// Utility functions
-async function disambiguate(
-	names: string[],
-	commands: RESTPostAPIApplicationCommandsJSONBody[],
-): Promise<InteractionsDeployCommandConfig[]> {
-	const disambiguated: InteractionsDeployCommandConfig[] = [];
-	const TypeNames = {
-		[ApplicationCommandType.ChatInput]: 'Chat Input Command',
-		[ApplicationCommandType.User]: 'User Command',
-		[ApplicationCommandType.Message]: 'Message Command',
-	};
-	for (const name of names) {
-		const possibleCommands = commands.filter((c) => c.name === name);
-		if (possibleCommands.length === 1) {
-			disambiguated.push({ name, type: possibleCommands[0].type ?? ApplicationCommandType.ChatInput });
-			continue;
-		}
-		// Compile type list: Chat Input Command, User Command, and Message Command
-		const commandTypes = possibleCommands.reduce((str, current, i) => {
-			const currentName = TypeNames[current.type ?? ApplicationCommandType.ChatInput];
-			switch (i) {
-				case 0:
-					return currentName;
-				case 1:
-					if (possibleCommands.length === 2) return `${str} and ${currentName}`;
-				case possibleCommands.length - 1:
-					return `${str}, and ${currentName}`;
-				default:
-					return `${str}, ${currentName}`;
-			}
-		}, '');
-		// Get the type that the user wants to keep
-		console.log(`The name ${name} matches commands with types ${commandTypes}.`);
-		const keepType = await getInput<ApplicationCommandType | 0 | -1>({
-			query: `Please enter the first letter (e.g. u for user) of the type of command that this config is for (or a for all)`,
-			transformer: (input) => {
-				if (!['a', 'c', 'm', 'u'].includes(input.toLowerCase())) return -1;
-				switch (input.toLowerCase()) {
-					case 'c':
-						return ApplicationCommandType.ChatInput;
-					case 'u':
-						return ApplicationCommandType.User;
-					case 'm':
-						return ApplicationCommandType.Message;
-					case 'a':
-						return 0;
-					default:
-						return -1;
-				}
-			},
-			validator: (input) => input !== -1,
-		});
-		// User wants all
-		if (keepType === 0) {
-			for (const command of possibleCommands) {
-				disambiguated.push({ name, type: command.type ?? ApplicationCommandType.ChatInput });
-			}
-			continue;
-		}
-		disambiguated.push({ name, type: keepType });
-	}
-	return disambiguated;
-}
-
-function mergeOverrides(output: InteractionsDeployConfig, input: CommandOptions) {
-	if ('bulkOverwrite' in input) output.bulkOverwrite = input.bulkOverwrite;
-	if ('clientId' in input) output.clientId = input.clientId;
-	if ('commands' in input) output.commands = input.commands;
-	if ('debug' in input) output.debug = input.debug;
-	if ('developer' in input) {
-		output.developer = true;
-		if (typeof input.developer === 'string') {
-			output.devGuildId = input.developer;
-		}
-	} else if (!('developer' in output)) {
-		output.developer = false;
-	}
-	if ('dryRun' in input) output.dryRun = input.dryRun;
-	if ('force' in input) output.force = input.force;
-	if ('full' in input) output.full = input.full;
-	if ('namedExport' in input) output.namedExport = input.namedExport;
-	if (!input.summary) output.summary = input.summary;
-	if ('token' in input) output.token = input.token;
-}
-
-interface InputOptions<T = string> {
-	query: string;
-	transformer?: (input: string) => T;
-	validator?: (input: T | string) => boolean;
-}
-
-async function getCommandNamesInput(
-	validNames: string[],
-	commandDefinitions: RESTPostAPIApplicationCommandsJSONBody[],
-	guildId?: Snowflake,
-): Promise<InteractionsDeployCommandConfig[]> {
-	const destination = guildId ? `to ${guildId}` : 'globally';
-	const commandNames = await getInput<string[]>({
-		query: `In a space separated list, enter the names of the commands which should be deployed ${destination}`,
-		transformer: (input) => input.split(' '),
-		validator: (input) => {
-			if (!Boolean(input.length)) return false;
-			for (const name of input as string[]) {
-				if (!validNames.includes(name)) {
-					console.log(chalk.redBright(`Unknown command (name: ${name}), please enter the list again`));
-					return false;
-				}
-			}
-			return true;
-		},
-	});
-	const commands = await disambiguate(commandNames, commandDefinitions);
-	return commands;
-}
-
-async function getYesNoInput(query: string): Promise<boolean> {
-	const out = await getInput<boolean | null>({
-		query: `${query} (Y/N)`,
-		transformer: (input) => {
-			if (input.toLowerCase() === 'y') return true;
-			if (input.toLowerCase() === 'n') return false;
-			return null;
-		},
-		validator: (input) => {
-			if (input === null) return false;
-			return true;
-		},
-	});
-	// Something went really wrong
-	if (out === null) throw new Error('Received null when it should not possible');
-	return out;
-}
-
-async function getInput<T>(
-	options:
-		| (InputOptions<T> & { transformer: (input: string) => T })
-		| (InputOptions<T> & { transformer: (input: string) => T; validator: (input: T) => boolean }),
-): Promise<T>;
-async function getInput(
-	options: InputOptions | (InputOptions & { validator: (input: string) => boolean }),
-): Promise<string>;
-async function getInput<T = string>({ query, transformer, validator }: InputOptions<T>): Promise<T | string> {
-	const controller = new AbortController();
-	const timeout = setTimeout(() => {
-		controller.abort();
-		prompt.close();
-		console.error(chalk.red('No required input for 1 minute, exiting'));
-		process.exit(1);
-	}, 60_000).unref();
-	const response = await new Promise<string>((res) => {
-		prompt.question(`${query}: `, { signal: controller.signal }, (input) => {
-			res(input);
-		});
-	}).finally(() => clearTimeout(timeout));
-	let output: T | string = response;
-	if (transformer) {
-		output = transformer(response);
-	}
-
-	if (validator) {
-		if (!validator(output)) {
-			if (transformer) {
-				return getInput<T>({ query, transformer, validator });
-			}
-
-			return getInput({ query, validator });
-		}
-	}
-
-	return output;
-}

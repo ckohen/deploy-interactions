@@ -388,7 +388,7 @@ async function runAsync() {
 	 */
 	let storedConfig: InteractionsDeployConfig = {};
 	try {
-		storedConfig = (await getStoredConfig(overrideOptions.debug ?? false, overrideOptions.config)) ?? {};
+		storedConfig = getStoredConfig(overrideOptions.debug ?? false, overrideOptions.config) ?? {};
 	} catch {
 		prompt.close();
 		process.exit(1);

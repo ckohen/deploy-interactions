@@ -4,17 +4,15 @@ import { ApplicationCommandType, RESTPostAPIApplicationCommandsJSONBody } from '
 import type { ApplicationCommandConfig } from './Deploy';
 import type { InteractionsDeployConfig, PathLikeWithDestinationConfig } from '../bin/deploy-interactions';
 
-export async function getStoredConfig(
-	debug: boolean,
-	overrideConfig?: string,
-): Promise<InteractionsDeployConfig | null> {
+export function getStoredConfig(debug: boolean, overrideConfig?: string): InteractionsDeployConfig | null {
 	const cwd = process.cwd();
 	const cwdFiles = readdirSync('./');
 	let config: InteractionsDeployConfig | null = null;
 	if (overrideConfig) {
 		try {
 			if (overrideConfig.endsWith('.js') || overrideConfig.endsWith('.cjs')) {
-				config = (await import(`${cwd}/${overrideConfig}`)) as InteractionsDeployConfig;
+				// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+				config = require(`${cwd}/${overrideConfig}`) as InteractionsDeployConfig;
 			}
 			if (overrideConfig.endsWith('.json')) {
 				config = JSON.parse(readFileSync(overrideConfig, 'utf8')) as InteractionsDeployConfig;
@@ -34,7 +32,8 @@ export async function getStoredConfig(
 	}
 	if (!config && cwdFiles.includes('.interactionsrc.js')) {
 		try {
-			config = (await import(`${cwd}/.interactionsrc.js`)) as InteractionsDeployConfig;
+			// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+			config = require(`${cwd}/.interactionsrc.js`) as InteractionsDeployConfig;
 		} catch (err) {
 			if (debug) {
 				console.error(chalk`{green Debug} Found js but could not import`, err);
@@ -44,7 +43,8 @@ export async function getStoredConfig(
 
 	if (!config && cwdFiles.includes('.interactionsrc.cjs')) {
 		try {
-			config = (await import(`${cwd}/.interactionsrc.cjs`)) as InteractionsDeployConfig;
+			// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+			config = require(`${cwd}/.interactionsrc.cjs`) as InteractionsDeployConfig;
 		} catch (err) {
 			if (debug) {
 				console.error(chalk`{green Debug} Found cjs but could not import`, err);
@@ -93,7 +93,14 @@ async function getCommand(path: PathLike, named?: string): Promise<RESTPostAPIAp
 	if (typeof path !== 'string' || path.endsWith('.json')) {
 		data = JSON.parse(readFileSync(path, 'utf8'));
 	} else if (path.endsWith('.js') || path.endsWith('.cjs')) {
-		data = await import(`${process.cwd()}/${path}`);
+		try {
+			// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+			data = require(`${process.cwd()}/${path}`);
+		} catch {
+			if (path.endsWith('.js')) {
+				data = await import(`file://${process.cwd()}/${path}`);
+			}
+		}
 		if (isJSONEncodable(data)) {
 			data = data.toJSON();
 		}

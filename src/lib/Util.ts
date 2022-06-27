@@ -111,7 +111,7 @@ export function commandEquals(existing: APIApplicationCommand, command: RESTPost
 		(command.type ?? ApplicationCommandType.ChatInput) !== existing.type ||
 		command.options?.length !== existing.options?.length ||
 		command.default_member_permissions !== existing.default_member_permissions ||
-		(existing.guild_id && (command.dm_permission ?? true) !== existing.dm_permission) ||
+		(existing.guild_id === undefined && (command.dm_permission ?? true) !== existing.dm_permission) ||
 		!isEqual(existing.name_localizations ?? {}, command.name_localizations ?? {}) ||
 		!isEqual(existing.description_localizations ?? {}, command.description_localizations ?? {})
 	) {

@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env node --experimental-json-modules
 
 import { existsSync, PathLike } from 'node:fs';
 import { createInterface as createPrompt } from 'node:readline';

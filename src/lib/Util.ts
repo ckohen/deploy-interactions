@@ -1,25 +1,27 @@
+import type { AddUndefinedToPossiblyUndefinedPropertiesOfInterface } from 'discord-api-types/utils/internals.js';
 import {
-	APIApplicationCommand,
-	APIApplicationCommandOption,
+	type APIApplicationCommand,
+	type APIApplicationCommandOption,
 	ApplicationCommandOptionType,
 	ApplicationCommandType,
-	RESTPostAPIApplicationCommandsJSONBody,
-	APIApplicationCommandSubcommandOption,
-	APIApplicationCommandChannelOption,
-	APIApplicationCommandStringOption,
-	APIApplicationCommandIntegerOption,
-	APIApplicationCommandNumberOption,
-	APIApplicationCommandOptionChoice,
+	type RESTPostAPIApplicationCommandsJSONBody,
+	type APIApplicationCommandSubcommandOption,
+	type APIApplicationCommandChannelOption,
+	type APIApplicationCommandStringOption,
+	type APIApplicationCommandIntegerOption,
+	type APIApplicationCommandNumberOption,
+	type APIApplicationCommandOptionChoice,
 } from 'discord-api-types/v10';
-
 import { default as isEqual } from 'fast-deep-equal';
 
 export type APIApplicationCommandChoicesOption =
-	| APIApplicationCommandStringOption
 	| APIApplicationCommandIntegerOption
-	| APIApplicationCommandNumberOption;
+	| APIApplicationCommandNumberOption
+	| APIApplicationCommandStringOption;
 
-export function isChoicesOption(option: APIApplicationCommandOption): option is APIApplicationCommandChoicesOption {
+export function isChoicesOption(
+	option: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<APIApplicationCommandOption>,
+): option is APIApplicationCommandChoicesOption {
 	return (
 		option.type === ApplicationCommandOptionType.String ||
 		option.type === ApplicationCommandOptionType.Integer ||
@@ -28,7 +30,7 @@ export function isChoicesOption(option: APIApplicationCommandOption): option is 
 }
 
 export function isSubcommandOption(
-	option: APIApplicationCommandOption,
+	option: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<APIApplicationCommandOption>,
 ): option is APIApplicationCommandSubcommandOption {
 	return (
 		option.type === ApplicationCommandOptionType.SubcommandGroup ||
@@ -36,17 +38,22 @@ export function isSubcommandOption(
 	);
 }
 
-export function isChannelOption(option: APIApplicationCommandOption): option is APIApplicationCommandChannelOption {
+export function isChannelOption(
+	option: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<APIApplicationCommandOption>,
+): option is APIApplicationCommandChannelOption {
 	return option.type === ApplicationCommandOptionType.Channel;
 }
 
 export function isNumericalOption(
-	option: APIApplicationCommandOption,
+	option: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<APIApplicationCommandOption>,
 ): option is APIApplicationCommandIntegerOption | APIApplicationCommandNumberOption {
 	return option.type === ApplicationCommandOptionType.Integer || option.type === ApplicationCommandOptionType.Number;
 }
 
-export function optionEquals(existing: APIApplicationCommandOption, option: APIApplicationCommandOption) {
+export function optionEquals(
+	existing: APIApplicationCommandOption,
+	option: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<APIApplicationCommandOption>,
+) {
 	if (
 		option.name !== existing.name ||
 		option.type !== existing.type ||
@@ -57,6 +64,7 @@ export function optionEquals(existing: APIApplicationCommandOption, option: APIA
 	) {
 		return false;
 	}
+
 	if (isChoicesOption(existing) && isChoicesOption(option)) {
 		if (existing.autocomplete !== option.autocomplete) return false;
 		const existingChoices = (existing as APIApplicationCommandChoicesOption & { autocomplete?: false }).choices;
@@ -64,7 +72,9 @@ export function optionEquals(existing: APIApplicationCommandOption, option: APIA
 		if (existingChoices?.length !== optionChoices?.length) return false;
 		if (existingChoices && optionChoices) {
 			for (const choice of existingChoices) {
-				const foundChoice = (optionChoices as APIApplicationCommandOptionChoice[]).find((c) => c.name === choice.name);
+				const foundChoice = (optionChoices as APIApplicationCommandOptionChoice[]).find(
+					(optChoice) => optChoice.name === choice.name,
+				);
 				if (!foundChoice || foundChoice.value !== choice.value) return false;
 			}
 		}
@@ -87,19 +97,27 @@ export function optionEquals(existing: APIApplicationCommandOption, option: APIA
 		}
 	}
 
-	if (isNumericalOption(existing) && isNumericalOption(option)) {
-		if (existing.min_value !== option.min_value || existing.max_value !== option.max_value) return false;
-	}
+	// eslint-disable-next-line sonarjs/prefer-single-boolean-return
+	if (
+		isNumericalOption(existing) &&
+		isNumericalOption(option) &&
+		(existing.min_value !== option.min_value || existing.max_value !== option.max_value)
+	)
+		return false;
 
 	return true;
 }
 
-export function optionsEqual(existing: APIApplicationCommandOption[], options: APIApplicationCommandOption[]) {
+export function optionsEqual(
+	existing: APIApplicationCommandOption[],
+	options: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<APIApplicationCommandOption>[],
+) {
 	if (existing.length !== options.length) return false;
 	for (const option of existing) {
-		const foundOption = options.find((o) => o.name === option.name);
+		const foundOption = options.find((opt) => opt.name === option.name);
 		if (!foundOption || !optionEquals(option, foundOption)) return false;
 	}
+
 	return true;
 }
 
@@ -121,5 +139,6 @@ export function commandEquals(existing: APIApplicationCommand, command: RESTPost
 	if (command.options && existing.options) {
 		return optionsEqual(existing.options, command.options);
 	}
+
 	return true;
 }

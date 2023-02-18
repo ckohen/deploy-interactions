@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { ApplicationCommandType, Snowflake } from 'discord-api-types/v10';
+import { ApplicationCommandType, type Snowflake } from 'discord-api-types/v10';
 import { table } from 'table';
 import type { DeployResponse, SingleDeployResponse } from './Deploy';
 
@@ -14,10 +14,12 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 		console.log(chalk`Deploy to ${guildId} {redBright failed}: ${data.bulkError.message}`);
 		return;
 	}
+
 	let header = chalk`Deploy to ${guildId} {greenBright successful}`;
 	if (data.errored.length) {
 		header = chalk`Deploy to ${guildId} {yellow partially successful}`;
 	}
+
 	let outputData: string[][];
 	if (dry) {
 		outputData = [['Type', 'Name', 'Status']];
@@ -39,6 +41,7 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 				chalk.greenBright('Success'),
 			]);
 		}
+
 		for (const skipped of data.skipped) {
 			outputData.push([
 				TypeNames[skipped.existing!.type],
@@ -48,6 +51,7 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 				chalk`{yellow Skipped} (Matched Existing)`,
 			]);
 		}
+
 		for (const errored of data.errored) {
 			outputData.push([
 				TypeNames[errored.command.type ?? ApplicationCommandType.ChatInput],
@@ -58,6 +62,7 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 			]);
 		}
 	}
+
 	console.log(table(outputData, { columnDefault: { width: 30, wrapWord: true }, header: { content: header } }));
 }
 
@@ -72,23 +77,29 @@ export default function outputResults(
 		console.log(chalk.redBright('Deployment Failed:'), debug ? results.error : results.error.message);
 		return;
 	}
+
 	if (!results.global && results.guilds.size === 0) {
 		console.log(chalk.cyanBright('No Commmands Deployed'));
 		return;
 	}
+
 	if (results.dev) {
 		outputFull(results.dev, results.guilds.get(results.dev)!, dryRun);
 		return;
 	}
+
 	if (debug || dryRun || full) {
 		if (results.global) {
 			outputFull('global', results.global, dryRun);
 		}
+
 		for (const [id, data] of results.guilds) {
 			outputFull(id, data, dryRun);
 		}
+
 		return;
 	}
+
 	if (disableSummary) {
 		let failed = true;
 		let success = true;
@@ -96,6 +107,7 @@ export default function outputResults(
 			failed = false;
 			if (results.global.errored.length) success = false;
 		}
+
 		if (failed || success) {
 			for (const data of results.guilds.values()) {
 				if (data.commands.length || data.skipped.length) failed = false;
@@ -103,12 +115,14 @@ export default function outputResults(
 				if (!failed && !success) break;
 			}
 		}
+
 		let status = chalk.yellow('Partially Successful');
 		if (success) status = chalk.greenBright('Successful');
 		if (failed) status = chalk.redBright('Failed');
 		console.log(`Deploy Completed: ${status}`);
 		return;
 	}
+
 	const outputData = [['Destination', 'Successful', 'Skipped', 'Errored']];
 	if (results.global) {
 		outputData.push([
@@ -120,6 +134,7 @@ export default function outputResults(
 				: chalk.redBright(results.global.errored.length),
 		]);
 	}
+
 	for (const [id, data] of results.guilds) {
 		outputData.push([
 			`Guild (${id})`,
@@ -128,5 +143,6 @@ export default function outputResults(
 			data.bulkError ? chalk`{redBright All} (${data.bulkError.message})` : chalk.redBright(data.errored.length),
 		]);
 	}
+
 	console.log(table(outputData, { columnDefault: { width: 30, wrapWord: true }, header: { content: 'Summary' } }));
 }

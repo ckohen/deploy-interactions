@@ -1,18 +1,18 @@
-import { DiscordAPIError, HTTPError, REST } from '@discordjs/rest';
+import { type DiscordAPIError, type HTTPError, REST } from '@discordjs/rest';
 import chalk from 'chalk';
 import {
-	APIApplicationCommand,
+	type APIApplicationCommand,
 	ApplicationCommandType,
-	RESTGetAPIApplicationCommandsResult,
-	RESTPostAPIApplicationCommandsJSONBody,
-	RESTPostAPIApplicationCommandsResult,
-	RESTPostAPIChatInputApplicationCommandsJSONBody,
-	RESTPostAPIContextMenuApplicationCommandsJSONBody,
-	RESTPutAPIApplicationCommandsResult,
+	type RESTGetAPIApplicationCommandsResult,
+	type RESTPostAPIApplicationCommandsJSONBody,
+	type RESTPostAPIApplicationCommandsResult,
+	type RESTPostAPIChatInputApplicationCommandsJSONBody,
+	type RESTPostAPIContextMenuApplicationCommandsJSONBody,
+	type RESTPutAPIApplicationCommandsResult,
 	Routes,
-	Snowflake,
+	type Snowflake,
 } from 'discord-api-types/v10';
-import { commandEquals } from './Util';
+import { commandEquals } from './Util.js';
 
 /**
  * The configuration for a command to be deployed
@@ -29,7 +29,7 @@ export interface ApplicationCommandConfig<CommandType extends RESTPostAPIApplica
 	/**
 	 * The ids of the guilds for which the command should be deployed as a guild command
 	 */
-	guildIds?: Snowflake[];
+	guildIds?: Snowflake[] | undefined;
 }
 
 /**
@@ -38,11 +38,10 @@ export interface ApplicationCommandConfig<CommandType extends RESTPostAPIApplica
 export interface CommandMap
 	extends Map<ApplicationCommandType, ApplicationCommandConfig<RESTPostAPIApplicationCommandsJSONBody>[]> {
 	get: ((
-		key: ApplicationCommandType.ChatInput,
-	) => ApplicationCommandConfig<RESTPostAPIChatInputApplicationCommandsJSONBody>[] | undefined) &
-		((
 			key: ApplicationCommandType.Message | ApplicationCommandType.User,
-		) => ApplicationCommandConfig<RESTPostAPIContextMenuApplicationCommandsJSONBody>[] | undefined);
+		) => ApplicationCommandConfig<RESTPostAPIContextMenuApplicationCommandsJSONBody>[] | undefined) & ((
+		key: ApplicationCommandType.ChatInput,
+	) => ApplicationCommandConfig<RESTPostAPIChatInputApplicationCommandsJSONBody>[] | undefined);
 }
 
 /**
@@ -57,7 +56,7 @@ export interface DeployConfig {
 	 * Whether to overwrite all commands using a single API call for global, and per guild
 	 * This is always a forced operation, setting force
 	 */
-	bulkOverwrite?: boolean;
+	bulkOverwrite?: boolean | undefined;
 	/**
 	 * The commands to register
 	 */
@@ -66,15 +65,15 @@ export interface DeployConfig {
 	 * A guild id to deploy all commmands to which, when provided,
 	 * deploys all commands regardless of global or guildIds to the specified guild
 	 */
-	devGuildId?: Snowflake;
+	devGuildId?: Snowflake | undefined;
 	/**
 	 * Whether to skip all API calls
 	 */
-	dryRun?: boolean;
+	dryRun?: boolean | undefined;
 	/**
 	 * Whether to skip equality checks for existing commands and just call the API
 	 */
-	force?: boolean;
+	force?: boolean | undefined;
 	/**
 	 * The bot token used to deploy commands
 	 */
@@ -86,21 +85,21 @@ export interface DeployConfig {
  */
 export interface DeployResponse {
 	/**
-	 * A map of guild ids to their individual responses
-	 */
-	guilds: Map<Snowflake, SingleDeployResponse>;
-	/**
-	 * The global response, if any
-	 */
-	global?: SingleDeployResponse;
-	/**
 	 * The id of the dev guild deploy if in dev mode
 	 */
 	dev?: Snowflake;
 	/**
 	 * If the entire process was halted due to unauth or similar, the error that was encountered
 	 */
-	error?: HTTPError | DiscordAPIError;
+	error?: DiscordAPIError | HTTPError;
+	/**
+	 * The global response, if any
+	 */
+	global?: SingleDeployResponse;
+	/**
+	 * A map of guild ids to their individual responses
+	 */
+	guilds: Map<Snowflake, SingleDeployResponse>;
 }
 
 /**
@@ -148,21 +147,21 @@ export interface ErroredCommand {
  */
 export interface SkippedCommand {
 	/**
-	 * The existing command from the API
-	 */
-	existing?: APIApplicationCommand;
-	/**
 	 * The command that was passed in and determined to be up to date
 	 */
 	command: RESTPostAPIApplicationCommandsJSONBody;
 	/**
-	 * The name of the duplicate, up to date command
+	 * The existing command from the API
 	 */
-	name: string;
+	existing?: APIApplicationCommand;
 	/**
 	 * The id of the duplicate, up to date command
 	 */
 	id?: Snowflake;
+	/**
+	 * The name of the duplicate, up to date command
+	 */
+	name: string;
 }
 
 let clientId: string;
@@ -170,7 +169,8 @@ const rest = new REST({ version: '10' });
 
 /**
  * Separates global commands from guild commands based on their configuration
- * @param commands The command configurations to separate
+ *
+ * @param commands - The command configurations to separate
  * @returns An array of global commands and the map of guilds to their commands
  */
 function separateGlobalGuild<T extends RESTPostAPIApplicationCommandsJSONBody>(
@@ -185,19 +185,23 @@ function separateGlobalGuild<T extends RESTPostAPIApplicationCommandsJSONBody>(
 				if (!guildCommands.has(id)) {
 					guildCommands.set(id, []);
 				}
+
 				guildCommands.get(id)!.push(command.command);
 			}
 		}
 	}
+
 	return { globalCommands, guildCommands };
 }
 
 /**
  * Deploys a set of commands globally or to the specified guild
- * @param commands The commands to deploy
- * @param force Whether to skip fetching the existing commands and checking equality
- * @param bulk Whether to overwrite all commands in scope
- * @param guildId The id of the guild to deploy to
+ *
+ * @param commands - The commands to deploy
+ * @param force - Whether to skip fetching the existing commands and checking equality
+ * @param bulk - Whether to overwrite all commands in scope
+ * @param dryRun - Whether to perform a dry run (does not hit the Discord API)
+ * @param guildId - The id of the guild to deploy to
  * @returns The status and data of the deploy
  */
 async function deploySingleDestination(
@@ -215,8 +219,10 @@ async function deploySingleDestination(
 		} else {
 			console.log(`Finished ${guildId ? `guild (${guildId})` : 'global'} deploy`);
 		}
-		return { skipped: commands.map((c) => ({ name: c.name, command: c })), errored: [], commands: [] };
+
+		return { skipped: commands.map((command) => ({ name: command.name, command })), errored: [], commands: [] };
 	}
+
 	if (bulk) {
 		// A promise rejection here is handled by the callee
 		const result = (await rest.put(route, { body: commands })) as RESTPutAPIApplicationCommandsResult;
@@ -236,17 +242,21 @@ async function deploySingleDestination(
 	for (const command of commands) {
 		if (!force) {
 			const existing = existingCommands.find(
-				(c) => (command.type ?? ApplicationCommandType.ChatInput) === c.type && command.name === c.name,
+				(definition) =>
+					(command.type ?? ApplicationCommandType.ChatInput) === definition.type && command.name === definition.name,
 			);
 			if (existing && commandEquals(existing, command)) {
 				skipped.push({ name: existing.name, id: existing.id, command, existing });
 				continue;
 			}
 		}
-		const result = (await rest.post(route, { body: command }).catch((err) => err as DiscordAPIError | HTTPError)) as
-			| RESTPostAPIApplicationCommandsResult
+
+		const result = (await rest
+			.post(route, { body: command })
+			.catch((error) => error as DiscordAPIError | HTTPError)) as
 			| DiscordAPIError
-			| HTTPError;
+			| HTTPError
+			| RESTPostAPIApplicationCommandsResult;
 		if (result instanceof Error) {
 			// Pass this up to callee as these errors indicate future requests will fail
 			if ([401, 403, 404].includes(result.status)) throw result;
@@ -259,16 +269,21 @@ async function deploySingleDestination(
 			added.push(result);
 		}
 	}
+
 	console.log(`Finished ${guildId ? `guild (${guildId})` : 'global'} deploy`);
 	return { commands: added, errored, skipped };
 }
 
+// Config docs are in DeployConfig interace
+/* eslint-disable jsdoc/check-param-names */
 /**
  * Deploys a set of application commands
- * @param config The configuration options for deploying
+ *
+ * @param config - The configuration options for deploying
  * @returns The results of the deploy
  */
-export default async function deploy({
+/* eslint-enable jsdoc/check-param-names */
+export async function deploy({
 	applicationId,
 	bulkOverwrite = false,
 	commands,
@@ -300,12 +315,12 @@ export default async function deploy({
 			chalk.blueBright(`Operating in dev mode, all ${allCommands.length} commands deploying to ${devGuildId}.`),
 		);
 		const deployed = await deploySingleDestination(
-			allCommands.map((c) => c.command),
+			allCommands.map((definition) => definition.command),
 			force,
 			bulkOverwrite,
 			dryRun,
 			devGuildId,
-		).catch((err) => err as DiscordAPIError | HTTPError);
+		).catch((error) => error as DiscordAPIError | HTTPError);
 		if (deployed instanceof Error) {
 			if ([401, 403, 404].includes(deployed.status)) return { guilds: new Map(), error: deployed, dev: devGuildId };
 			return {
@@ -315,21 +330,20 @@ export default async function deploy({
 				dev: devGuildId,
 			};
 		}
+
 		return { guilds: new Map<string, SingleDeployResponse>([[devGuildId, deployed]]), dev: devGuildId };
 	}
 
 	// Separate commands into their destinations
 	const response: DeployResponse = {
 		guilds: new Map(),
-		global: undefined,
-		dev: undefined,
 	};
 	const { globalCommands, guildCommands: guildCommandsMap } =
 		separateGlobalGuild<RESTPostAPIApplicationCommandsJSONBody>(allCommands);
 	// Deploy Global commands
 	if (globalCommands.length > 0) {
 		const deployed = await deploySingleDestination(globalCommands, force, bulkOverwrite, dryRun).catch(
-			(err) => err as DiscordAPIError | HTTPError,
+			(error) => error as DiscordAPIError | HTTPError,
 		);
 		if (deployed instanceof Error) {
 			// If the error is unauth or the unlikely 403 / 404, stop all future requests
@@ -343,7 +357,7 @@ export default async function deploy({
 	// Deploy Guild Commands
 	for (const [guildId, guildCommands] of guildCommandsMap) {
 		const deployed = await deploySingleDestination(guildCommands, force, bulkOverwrite, dryRun, guildId).catch(
-			(err) => err as DiscordAPIError | HTTPError,
+			(error) => error as DiscordAPIError | HTTPError,
 		);
 		if (deployed instanceof Error) {
 			// If the error is unauth, stop all future requests, 403 / 404 here can be different per guild
@@ -353,5 +367,8 @@ export default async function deploy({
 			response.guilds.set(guildId, deployed);
 		}
 	}
+
 	return response;
 }
+
+export default deploy;

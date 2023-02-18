@@ -1,5 +1,5 @@
-export { default, default as deploy } from './lib/Deploy';
-export * from './lib/Deploy';
-export * from './bin/deploy-interactions';
-export * from './lib/Util';
+export * from './lib/Deploy.js';
+export * from './bin/deploy-interactions.js';
+export * from './lib/Util.js';
 export * from 'discord-api-types/v10';
+export { default } from './lib/Deploy.js';

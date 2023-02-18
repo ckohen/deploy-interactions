@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 
-import { existsSync, PathLike } from 'node:fs';
+import { existsSync, type PathLike } from 'node:fs';
+import process from 'node:process';
 import { createInterface as createPrompt } from 'node:readline';
+import { setTimeout, clearTimeout } from 'node:timers';
 import chalk from 'chalk';
 import { Command } from 'commander';
-import { ApplicationCommandType, RESTPostAPIApplicationCommandsJSONBody, Snowflake } from 'discord-api-types/v10';
+import {
+	ApplicationCommandType,
+	type RESTPostAPIApplicationCommandsJSONBody,
+	type Snowflake,
+} from 'discord-api-types/v10';
 import * as dotenv from 'dotenv';
 import { version } from '../../package.json';
-import deploy, { ApplicationCommandConfig, CommandMap, DeployResponse } from '../lib/Deploy';
-import { getCommands, getStoredConfig, storeConfig } from '../lib/FileParser';
-import outputResults from '../lib/LogCompiler';
+import { deploy, type ApplicationCommandConfig, type CommandMap, type DeployResponse } from '../lib/Deploy.js';
+import { getCommands, getStoredConfig, storeConfig } from '../lib/FileParser.js';
+import outputResults from '../lib/LogCompiler.js';
 
 /**
  * The configuration that can be used to deploy commands using the `deploy-interactions` commands
@@ -48,15 +54,15 @@ export interface InteractionsDeployConfig {
 	 */
 	debug?: boolean;
 	/**
+	 * The id of the guild to use when running in developer mode
+	 */
+	devGuildId?: Snowflake;
+	/**
 	 * Whether to run deployment in dev mode (deploying all commands to a single guild regardless of other config)
 	 *
 	 * *Enables `full` inhernetly*
 	 */
 	developer?: boolean;
-	/**
-	 * The id of the guild to use when running in developer mode
-	 */
-	devGuildId?: Snowflake;
 	/**
 	 * Skips the actual API deployment stage and outputs the full summary of deployment
 	 *
@@ -96,7 +102,6 @@ export interface InteractionsDeployConfig {
 const DefaultConfig: InteractionsDeployConfig = {
 	bulkOverwrite: false,
 	debug: false,
-	developer: undefined,
 	dryRun: false,
 	force: false,
 };
@@ -106,13 +111,13 @@ const DefaultConfig: InteractionsDeployConfig = {
  */
 export interface PathLikeWithDestinationConfig {
 	/**
-	 * The path to the file(s) that uses this destination config
-	 */
-	path: PathLike;
-	/**
 	 * The destination config that applies to all items found in the path
 	 */
 	destinations: { global: boolean; guildIds?: Snowflake[] };
+	/**
+	 * The path to the file(s) that uses this destination config
+	 */
+	path: PathLike;
 }
 
 /**
@@ -120,13 +125,13 @@ export interface PathLikeWithDestinationConfig {
  */
 export interface InteractionsDeployDestinationsConfig {
 	/**
-	 * The identifiers of the commands to be deployed globally
-	 */
-	global?: InteractionsDeployCommandConfig[];
-	/**
 	 * The identifiers of the commands to be deployed to the specified guildId
 	 */
 	[guildId: string]: InteractionsDeployCommandConfig[] | undefined;
+	/**
+	 * The identifiers of the commands to be deployed globally
+	 */
+	global?: InteractionsDeployCommandConfig[];
 }
 
 /**
@@ -139,7 +144,8 @@ export interface InteractionsDeployCommandConfig {
 	name: string;
 	/**
 	 * The type of application command (names are unique per type)
-	 * @default ApplicationCommandType.ChatInput
+	 *
+	 * @defaultValue ApplicationCommandType.ChatInput
 	 */
 	type?: ApplicationCommandType;
 }
@@ -214,6 +220,7 @@ function mergeOverrides(output: InteractionsDeployConfig, input: CommandOptions)
 	} else if (!('developer' in output)) {
 		output.developer = false;
 	}
+
 	if ('dryRun' in input) output.dryRun = input.dryRun;
 	if ('force' in input) output.force = input.force;
 	if ('full' in input) output.full = input.full;
@@ -224,17 +231,17 @@ function mergeOverrides(output: InteractionsDeployConfig, input: CommandOptions)
 
 interface InputOptions<T = string> {
 	query: string;
-	transformer?: (input: string) => T;
-	validator?: (input: T | string) => boolean;
+	transformer?(input: string): T;
+	validator?(input: T | string): boolean;
 }
 
 async function getInput<T>(
 	options:
-		| (InputOptions<T> & { transformer: (input: string) => T })
-		| (InputOptions<T> & { transformer: (input: string) => T; validator: (input: T) => boolean }),
+		| (InputOptions<T> & { transformer(input: string): T })
+		| (InputOptions<T> & { transformer(input: string): T; validator(input: T): boolean }),
 ): Promise<T>;
 async function getInput(
-	options: InputOptions | (InputOptions & { validator: (input: string) => boolean }),
+	options: InputOptions | (InputOptions & { validator(input: string): boolean }),
 ): Promise<string>;
 async function getInput<T = string>({ query, transformer, validator }: InputOptions<T>): Promise<T | string> {
 	const controller = new AbortController();
@@ -244,9 +251,9 @@ async function getInput<T = string>({ query, transformer, validator }: InputOpti
 		console.error(chalk.red('No required input for 1 minute, exiting'));
 		process.exit(1);
 	}, 60_000).unref();
-	const response = await new Promise<string>((res) => {
+	const response = await new Promise<string>((resolve) => {
 		prompt.question(`${query}: `, { signal: controller.signal }, (input) => {
-			res(input);
+			resolve(input);
 		});
 	}).finally(() => clearTimeout(timeout));
 	let output: T | string = response;
@@ -254,14 +261,12 @@ async function getInput<T = string>({ query, transformer, validator }: InputOpti
 		output = transformer(response);
 	}
 
-	if (validator) {
-		if (!validator(output)) {
-			if (transformer) {
-				return getInput<T>({ query, transformer, validator });
-			}
-
-			return getInput({ query, validator });
+	if (validator && !validator(output)) {
+		if (transformer) {
+			return getInput<T>({ query, transformer, validator });
 		}
+
+		return getInput({ query, validator });
 	}
 
 	return output;
@@ -276,8 +281,7 @@ async function getYesNoInput(query: string): Promise<boolean> {
 			return null;
 		},
 		validator: (input) => {
-			if (input === null) return false;
-			return true;
+			return input !== null;
 		},
 	});
 	// Something went really wrong
@@ -296,20 +300,20 @@ async function disambiguate(
 		[ApplicationCommandType.Message]: 'Message Command',
 	};
 	for (const name of names) {
-		const possibleCommands = commands.filter((c) => c.name === name);
+		const possibleCommands = commands.filter((command) => command.name === name);
 		if (possibleCommands.length === 1) {
-			disambiguated.push({ name, type: possibleCommands[0].type ?? ApplicationCommandType.ChatInput });
+			disambiguated.push({ name, type: possibleCommands[0]!.type ?? ApplicationCommandType.ChatInput });
 			continue;
 		}
+
 		// Compile type list: Chat Input Command, User Command, and Message Command
-		const commandTypes = possibleCommands.reduce((str, current, i) => {
+		const commandTypes = possibleCommands.reduce((str, current, index) => {
 			const currentName = TypeNames[current.type ?? ApplicationCommandType.ChatInput];
-			switch (i) {
+			switch (index) {
 				case 0:
 					return currentName;
-				case 1:
-					if (possibleCommands.length === 2) return `${str} and ${currentName}`;
 				case possibleCommands.length - 1:
+					if (possibleCommands.length === 2) return `${str} and ${currentName}`;
 					return `${str}, and ${currentName}`;
 				default:
 					return `${str}, ${currentName}`;
@@ -317,7 +321,7 @@ async function disambiguate(
 		}, '');
 		// Get the type that the user wants to keep
 		console.log(`The name ${name} matches commands with types ${commandTypes}.`);
-		const keepType = await getInput<ApplicationCommandType | 0 | -1>({
+		const keepType = await getInput<ApplicationCommandType | -1 | 0>({
 			query: `Please enter the first letter (e.g. u for user) of the type of command that this config is for (or a for all)`,
 			transformer: (input) => {
 				if (!['a', 'c', 'm', 'u'].includes(input.toLowerCase())) return -1;
@@ -341,10 +345,13 @@ async function disambiguate(
 			for (const command of possibleCommands) {
 				disambiguated.push({ name, type: command.type ?? ApplicationCommandType.ChatInput });
 			}
+
 			continue;
 		}
+
 		disambiguated.push({ name, type: keepType });
 	}
+
 	return disambiguated;
 }
 
@@ -358,18 +365,18 @@ async function getCommandNamesInput(
 		query: `In a space separated list, enter the names of the commands which should be deployed ${destination}`,
 		transformer: (input) => input.split(' '),
 		validator: (input) => {
-			if (!Boolean(input.length)) return false;
+			if (!input.length) return false;
 			for (const name of input as string[]) {
 				if (!validNames.includes(name)) {
 					console.log(chalk.redBright(`Unknown command (name: ${name}), please enter the list again`));
 					return false;
 				}
 			}
+
 			return true;
 		},
 	});
-	const commands = await disambiguate(commandNames, commandDefinitions);
-	return commands;
+	return disambiguate(commandNames, commandDefinitions);
 }
 
 async function runAsync() {
@@ -393,6 +400,7 @@ async function runAsync() {
 		prompt.close();
 		process.exit(1);
 	}
+
 	const config: InteractionsDeployConfig = { ...DefaultConfig, ...storedConfig };
 
 	// Check if its likely the first time run, if so ask if user wants to store
@@ -413,6 +421,7 @@ async function runAsync() {
 
 	mergeOverrides(config, overrideOptions);
 
+	/* eslint-disable require-atomic-updates */
 	// Collect client id if not stored or provided
 	if (!('clientId' in config)) {
 		config.clientId = await getInput({
@@ -458,6 +467,7 @@ async function runAsync() {
 				});
 			}
 		}
+
 		// Skip destination check in developer mode, everything is going to the same place
 		if (!config.developer && !('commandDestinations' in config)) {
 			wantsDestinations = await getYesNoInput('Would you like to configure guild deployment alongside global?');
@@ -494,16 +504,17 @@ async function runAsync() {
 		!config.developer &&
 		wantsDestinations &&
 		!('commandDestinations' in config) &&
-		(deployableCommands.length === 0 || deployableCommands.every((c) => !Boolean(c.guildIds?.length)))
+		deployableCommands.every((conf) => !conf.guildIds?.length)
 	) {
 		let getGuildsOnly = true;
 		if (deployableCommands.length) {
 			// This can only be reached when global has been disabled and the commands config had no guilds configured
 			// Move all commands to definitions since we don't care about their global state and guilIds is empty
-			config.commandDefinitions = deployableCommands.map((c) => c.command);
+			config.commandDefinitions = deployableCommands.map((command) => command.command);
 			deployableCommands = [];
 		}
-		const validNames = config.commandDefinitions!.map((c) => c.name);
+
+		const validNames = config.commandDefinitions!.map((command) => command.name);
 		console.log(chalk`{cyan Commands found}: {yellowBright ${validNames.join(', ')}}`);
 		// Determine whether this is first time setup, and if so, check global deploy config
 		let deployAllGlobal = false;
@@ -513,15 +524,16 @@ async function runAsync() {
 		}
 
 		let globalCommands: InteractionsDeployCommandConfig[] = deployAllGlobal
-			? config.commandDefinitions!.map((c) => ({
-					name: c.name,
-					type: c.type ?? ApplicationCommandType.ChatInput,
+			? config.commandDefinitions!.map((command) => ({
+					name: command.name,
+					type: command.type ?? ApplicationCommandType.ChatInput,
 			  }))
 			: [];
 		const guildCommands = new Map<Snowflake, InteractionsDeployCommandConfig[]>();
 		if (!deployAllGlobal && !getGuildsOnly) {
 			globalCommands = await getCommandNamesInput(validNames, config.commandDefinitions!);
 		}
+
 		let done = false;
 		let count = 1;
 		while (!done) {
@@ -535,6 +547,7 @@ async function runAsync() {
 			if (await getYesNoInput('Do you have another guild to deploy to?')) continue;
 			done = true;
 		}
+
 		// Assign destination values to config
 		config.commandDestinations = { global: globalCommands };
 		for (const [guildId, conf] of guildCommands) {
@@ -555,23 +568,27 @@ async function runAsync() {
 					if (guild === 'global') {
 						if (!overrideOptions.global) continue;
 						conf.global = deployConfig.some(
-							(c) =>
-								c.name === command.name &&
-								(c.type ?? ApplicationCommandType.ChatInput) === (command.type ?? ApplicationCommandType.ChatInput),
+							(confCommand) =>
+								confCommand.name === command.name &&
+								(confCommand.type ?? ApplicationCommandType.ChatInput) ===
+									(command.type ?? ApplicationCommandType.ChatInput),
 						);
 						continue;
 					}
+
 					if (
 						deployConfig.some(
-							(c) =>
-								c.name === command.name &&
-								(c.type ?? ApplicationCommandType.ChatInput) === (command.type ?? ApplicationCommandType.ChatInput),
+							(confCommand) =>
+								confCommand.name === command.name &&
+								(confCommand.type ?? ApplicationCommandType.ChatInput) ===
+									(command.type ?? ApplicationCommandType.ChatInput),
 						)
 					) {
 						conf.guildIds!.push(guild);
 					}
 				}
 			}
+
 			return conf;
 		});
 	}
@@ -583,6 +600,8 @@ async function runAsync() {
 		});
 	}
 
+	/* eslint-enable require-atomic-updates */
+
 	if (store) {
 		storeConfig(config, store);
 	}
@@ -593,13 +612,16 @@ async function runAsync() {
 		[
 			ApplicationCommandType.ChatInput,
 			deployableCommands.filter(
-				(c) => (c.command.type ?? ApplicationCommandType.ChatInput) === ApplicationCommandType.ChatInput,
+				(command) => (command.command.type ?? ApplicationCommandType.ChatInput) === ApplicationCommandType.ChatInput,
 			),
 		],
-		[ApplicationCommandType.User, deployableCommands.filter((c) => c.command.type === ApplicationCommandType.User)],
+		[
+			ApplicationCommandType.User,
+			deployableCommands.filter((command) => command.command.type === ApplicationCommandType.User),
+		],
 		[
 			ApplicationCommandType.Message,
-			deployableCommands.filter((c) => c.command.type === ApplicationCommandType.Message),
+			deployableCommands.filter((command) => command.command.type === ApplicationCommandType.Message),
 		],
 	]) as CommandMap;
 	results = await deploy({

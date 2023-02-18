@@ -1,10 +1,11 @@
-import {
+import type {
 	APIApplicationCommandChannelOption,
 	APIApplicationCommandIntegerOption,
 	RESTPostAPIChatInputApplicationCommandsJSONBody,
 	RESTPostAPIContextMenuApplicationCommandsJSONBody,
 } from 'discord-api-types/v10';
-import { APIApplicationCommandChoicesOption, commandEquals, optionsEqual } from '../lib/Util';
+// eslint-disable-next-line import/extensions
+import { type APIApplicationCommandChoicesOption, commandEquals, optionsEqual } from '../lib/Util';
 
 const receivedChatCommand = {
 	id: '828935534738669580',
@@ -15,7 +16,6 @@ const receivedChatCommand = {
 	default_member_permissions: '0',
 	dm_permission: true,
 	type: 1,
-	guild_id: '788600861982588940',
 	options: [
 		{
 			type: 1,
@@ -94,19 +94,22 @@ const receivedChatCommand = {
 };
 
 function deepObjectArrayClone<
-	T extends typeof receivedChatCommand['options'] | typeof receivedChatCommand['options'][0]['options'],
+	T extends (typeof receivedChatCommand)['options'] | (typeof receivedChatCommand)['options'][0]['options'],
 >(array: T) {
-	return array.map((v) => {
-		const cloned = { ...v };
+	return array.map((value) => {
+		const cloned = { ...value };
 		if (cloned.options) {
-			cloned.options = deepObjectArrayClone(v.options);
+			cloned.options = deepObjectArrayClone(value.options);
 		}
+
 		if (cloned.choices) {
-			cloned.choices = deepObjectArrayClone(v.choices);
+			cloned.choices = deepObjectArrayClone(value.choices);
 		}
+
 		if (cloned.channel_types) {
-			cloned.channel_types = [...(v.channel_types as number[])];
+			cloned.channel_types = [...(value.channel_types as number[])];
 		}
+
 		return cloned;
 	});
 }
@@ -129,7 +132,6 @@ const receivedUserCommand = {
 	default_member_permissions: '0',
 	dm_permission: true,
 	type: 2,
-	guild_id: '788600861982588940',
 };
 
 const sentUserCommand: RESTPostAPIContextMenuApplicationCommandsJSONBody = {
@@ -161,7 +163,7 @@ describe('Application Command Equality', () => {
 	});
 	test('Top Level properties - Content Menu Commands', () => {
 		expect(commandEquals(receivedUserCommand, sentUserCommand)).toBe(true);
-		// @ts-expect-error
+		// @ts-expect-error testing random properties
 		expect(commandEquals(receivedUserCommand, { ...sentUserCommand, description: '' })).toBe(true);
 		expect(commandEquals(receivedUserCommand, { ...sentUserCommand, name: 'another-name' })).toBe(false);
 		expect(commandEquals(receivedUserCommand, { ...sentUserCommand, type: 3 })).toBe(false);

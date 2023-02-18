@@ -1,27 +1,47 @@
 {
 	"compilerOptions": {
+		// Type Checking
+		"allowUnreachableCode": false,
+		"allowUnusedLabels": false,
+		"exactOptionalPropertyTypes": true,
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitOverride": true,
+		"noImplicitReturns": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
 		"strict": true,
-		"moduleResolution": "Node16",
-		"target": "ES2022",
-		"lib": ["ESNext"],
-		"sourceMap": true,
-		"removeComments": false,
-		"alwaysStrict": true,
-		"pretty": true,
-		"noEmitHelpers": true,
-		"importHelpers": true,
-		"skipLibCheck": true,
-		"esModuleInterop": true,
-		"module": "Node16",
+		"useUnknownInCatchVariables": true,
+		"noUncheckedIndexedAccess": true,
+
+		// Modules
+		"module": "NodeNext",
+		"moduleResolution": "node",
+		"resolveJsonModule": true,
+
+		// Emit
 		"composite": true,
 		"declaration": true,
 		"declarationMap": true,
-		"preserveConstEnums": true,
-		"resolveJsonModule": true,
+		"importHelpers": true,
 		"importsNotUsedAsValues": "error",
+		"inlineSources": true,
+		"newLine": "lf",
+		"noEmitHelpers": true,
 		"sourceRoot": "./",
 		"rootDir": "./",
-		"outDir": "."
+		"outDir": ".",
+		"preserveConstEnums": true,
+		"removeComments": false,
+		"sourceMap": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+
+		// Language and Environment
+		"emitDecoratorMetadata": true,
+		"experimentalDecorators": true,
+		"lib": ["ESNext"],
+		"target": "ES2022",
+		"useDefineForClassFields": true
 	},
 	"include": ["package.json"],
 	"exclude": ["**/*.test.ts"]

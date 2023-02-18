@@ -4,8 +4,8 @@ import type {
 	RESTPostAPIChatInputApplicationCommandsJSONBody,
 	RESTPostAPIContextMenuApplicationCommandsJSONBody,
 } from 'discord-api-types/v10';
-// eslint-disable-next-line import/extensions
-import { type APIApplicationCommandChoicesOption, commandEquals, optionsEqual } from '../lib/Util';
+import { describe, test, expect } from 'vitest';
+import { type APIApplicationCommandChoicesOption, commandEquals, optionsEqual } from '../src/lib/Util.js';
 
 const receivedChatCommand = {
 	id: '828935534738669580',

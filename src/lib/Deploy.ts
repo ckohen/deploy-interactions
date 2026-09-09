@@ -1,9 +1,10 @@
-import { type DiscordAPIError, type HTTPError, REST } from '@discordjs/rest';
+import { type DiscordAPIError, type HTTPError, makeURLSearchParams, REST } from '@discordjs/rest';
 import chalk from 'chalk';
 import {
 	type APIApplicationCommand,
 	ApplicationCommandType,
 	type RESTGetAPIApplicationCommandsResult,
+	type RESTGetAPIApplicationCommandsQuery,
 	type RESTPostAPIApplicationCommandsJSONBody,
 	type RESTPostAPIApplicationCommandsResult,
 	type RESTPostAPIChatInputApplicationCommandsJSONBody,
@@ -29,6 +30,8 @@ export interface ApplicationCommandConfig<CommandType extends RESTPostAPIApplica
 	global: boolean;
 	/**
 	 * The ids of the guilds for which the command should be deployed as a guild command
+	 *
+	 * Primary entry point commands cannot be deployed to guilds.
 	 */
 	guildIds?: Snowflake[] | undefined;
 }
@@ -240,7 +243,9 @@ async function deploySingleDestination(
 	let existingCommands: RESTGetAPIApplicationCommandsResult = [];
 	if (!force) {
 		// A promise rejection here is handled by the callee
-		existingCommands = (await rest.get(route)) as RESTGetAPIApplicationCommandsResult;
+		existingCommands = (await rest.get(route, {
+			query: makeURLSearchParams<RESTGetAPIApplicationCommandsQuery>({ with_localizations: true }),
+		})) as RESTGetAPIApplicationCommandsResult;
 	}
 
 	const added: APIApplicationCommand[] = [];
@@ -304,11 +309,21 @@ export async function deploy({
 		rest.setToken(token);
 	}
 
-	const chatCommands = commands.get(ApplicationCommandType.ChatInput) ?? [];
-	const userCommands = commands.get(ApplicationCommandType.User) ?? [];
-	const messageCommands = commands.get(ApplicationCommandType.Message) ?? [];
 	const primaryEntryPointCommands = commands.get(ApplicationCommandType.PrimaryEntryPoint) ?? [];
-	const allCommands = [...chatCommands, ...userCommands, ...messageCommands, ...primaryEntryPointCommands];
+	if (devGuildId && primaryEntryPointCommands.length > 0) {
+		throw new TypeError(
+			'Primary entry point commands cannot be deployed in developer mode because they are global-only',
+		);
+	}
+
+	const guildPrimaryEntryPoint = primaryEntryPointCommands.find((command) => command.guildIds?.length);
+	if (guildPrimaryEntryPoint) {
+		throw new TypeError(
+			`Primary entry point command ${guildPrimaryEntryPoint.command.name} cannot be deployed to a guild because it is global-only`,
+		);
+	}
+
+	const allCommands = [...commands.values()].flat();
 	if (allCommands.length === 0) {
 		return null;
 	}

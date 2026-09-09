@@ -365,10 +365,18 @@ async function disambiguate(
 }
 
 async function getCommandNamesInput(
-	validNames: string[],
 	commandDefinitions: RESTPostAPIApplicationCommandsJSONBody[],
 	guildId?: Snowflake,
 ): Promise<InteractionsDeployCommandConfig[]> {
+	const availableDefinitions = guildId
+		? commandDefinitions.filter((command) => command.type !== ApplicationCommandType.PrimaryEntryPoint)
+		: commandDefinitions;
+	if (availableDefinitions.length === 0) {
+		console.log(chalk.yellow('No commands can be deployed to this guild.'));
+		return [];
+	}
+
+	const validNames = [...new Set(availableDefinitions.map((command) => command.name))];
 	const destination = guildId ? `to ${guildId}` : 'globally';
 	const commandNames = await getInput<string[]>({
 		query: `In a space separated list, enter the names of the commands which should be deployed ${destination}`,
@@ -385,7 +393,7 @@ async function getCommandNamesInput(
 			return true;
 		},
 	});
-	return disambiguate(commandNames, commandDefinitions);
+	return disambiguate(commandNames, availableDefinitions);
 }
 
 async function runAsync() {
@@ -544,7 +552,7 @@ async function runAsync() {
 			: [];
 		const guildCommands = new Map<Snowflake, InteractionsDeployCommandConfig[]>();
 		if (!deployAllGlobal && !getGuildsOnly) {
-			globalCommands = await getCommandNamesInput(validNames, config.commandDefinitions!);
+			globalCommands = await getCommandNamesInput(config.commandDefinitions!);
 		}
 
 		let done = false;
@@ -554,7 +562,7 @@ async function runAsync() {
 				query: `(Guild ${count}) Please provide an id for the guild to configure command deployment on`,
 				validator: (input) => input.length >= 16 && input.length <= 20,
 			});
-			const commands = await getCommandNamesInput(validNames, config.commandDefinitions!, guildId);
+			const commands = await getCommandNamesInput(config.commandDefinitions!, guildId);
 			guildCommands.set(guildId, commands);
 			count += 1;
 			if (await getYesNoInput('Do you have another guild to deploy to?')) continue;
@@ -621,26 +629,18 @@ async function runAsync() {
 
 	let results: DeployResponse | null = null;
 
-	const deployReady: CommandMap = new Map([
-		[
-			ApplicationCommandType.ChatInput,
-			deployableCommands.filter(
-				(command) => (command.command.type ?? ApplicationCommandType.ChatInput) === ApplicationCommandType.ChatInput,
-			),
-		],
-		[
-			ApplicationCommandType.User,
-			deployableCommands.filter((command) => command.command.type === ApplicationCommandType.User),
-		],
-		[
-			ApplicationCommandType.Message,
-			deployableCommands.filter((command) => command.command.type === ApplicationCommandType.Message),
-		],
-		[
-			ApplicationCommandType.PrimaryEntryPoint,
-			deployableCommands.filter((command) => command.command.type === ApplicationCommandType.PrimaryEntryPoint),
-		],
-	]) as CommandMap;
+	const groupedCommands = new Map<
+		ApplicationCommandType,
+		ApplicationCommandConfig<RESTPostAPIApplicationCommandsJSONBody>[]
+	>();
+	for (const deployableCommand of deployableCommands) {
+		const type = deployableCommand.command.type ?? ApplicationCommandType.ChatInput;
+		const typeCommands = groupedCommands.get(type) ?? [];
+		typeCommands.push(deployableCommand);
+		groupedCommands.set(type, typeCommands);
+	}
+
+	const deployReady = groupedCommands as CommandMap;
 	results = await deploy({
 		applicationId: config.clientId!,
 		bulkOverwrite: config.bulkOverwrite,

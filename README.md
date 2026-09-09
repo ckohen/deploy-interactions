@@ -10,7 +10,7 @@ deploy-interactions is a [Node.js](https://nodejs.org) module providing a powerf
 
 ## Install
 
-**Node.js 22.12.0 or newer is required.**
+**Node.js 24.0.0 or newer is required.**
 
 ```sh-session
 npm install deploy-interactions

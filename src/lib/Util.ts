@@ -53,6 +53,24 @@ export function isNumericalOption(
 	return option.type === ApplicationCommandOptionType.Integer || option.type === ApplicationCommandOptionType.Number;
 }
 
+export function isStringOption(
+	option: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<APIApplicationCommandOption>,
+): option is APIApplicationCommandStringOption {
+	return option.type === ApplicationCommandOptionType.String;
+}
+
+function unorderedNumberArraysEqual(
+	left: readonly number[] | null | undefined,
+	right: readonly number[] | null | undefined,
+): boolean {
+	if (left?.length !== right?.length) return false;
+	if (!left || !right) return true;
+
+	const sortedLeft = [...left].sort((first, second) => first - second);
+	const sortedRight = [...right].sort((first, second) => first - second);
+	return sortedLeft.every((value, index) => value === sortedRight[index]);
+}
+
 export function optionEquals(
 	existing: APIApplicationCommandOption,
 	option: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<APIApplicationCommandOption>,
@@ -69,38 +87,44 @@ export function optionEquals(
 	}
 
 	if (isChoicesOption(existing) && isChoicesOption(option)) {
-		if (existing.autocomplete !== option.autocomplete) return false;
+		if ((existing.autocomplete ?? false) !== (option.autocomplete ?? false)) return false;
 		const existingChoices = (existing as APIApplicationCommandChoicesOption & { autocomplete?: false }).choices;
 		const optionChoices = (option as APIApplicationCommandChoicesOption & { autocomplete?: false }).choices;
-		if (existingChoices?.length !== optionChoices?.length) return false;
+		if ((existingChoices?.length ?? 0) !== (optionChoices?.length ?? 0)) return false;
 		if (existingChoices && optionChoices) {
-			for (const choice of existingChoices) {
-				const foundChoice = (optionChoices as APIApplicationCommandOptionChoice[]).find(
-					(optChoice) => optChoice.name === choice.name,
-				);
-				if (foundChoice?.value !== choice.value) return false;
+			for (const [index, choice] of existingChoices.entries()) {
+				const optionChoice = (optionChoices as APIApplicationCommandOptionChoice[])[index];
+				if (
+					optionChoice?.name !== choice.name ||
+					optionChoice?.value !== choice.value ||
+					!isEqual(optionChoice?.name_localizations ?? {}, choice.name_localizations ?? {})
+				) {
+					return false;
+				}
 			}
 		}
 	}
 
 	if (isSubcommandOption(existing) && isSubcommandOption(option)) {
-		if (existing.options?.length !== option.options?.length) return false;
+		if ((existing.options?.length ?? 0) !== (option.options?.length ?? 0)) return false;
 		if (existing.options && option.options) {
 			return optionsEqual(existing.options, option.options);
 		}
 	}
 
-	if (isChannelOption(existing) && isChannelOption(option)) {
-		if (existing.channel_types?.length !== option.channel_types?.length) return false;
-		if (existing.channel_types && option.channel_types) {
-			for (const type of existing.channel_types) {
-				if (!option.channel_types.includes(type)) return false;
-			}
-		}
-	}
+	if (
+		isChannelOption(existing) &&
+		isChannelOption(option) &&
+		!unorderedNumberArraysEqual(existing.channel_types, option.channel_types)
+	)
+		return false;
 
 	if (isNumericalOption(existing) && isNumericalOption(option)) {
 		return existing.min_value === option.min_value && existing.max_value === option.max_value;
+	}
+
+	if (isStringOption(existing) && isStringOption(option)) {
+		return existing.min_length === option.min_length && existing.max_length === option.max_length;
 	}
 
 	return true;
@@ -111,23 +135,33 @@ export function optionsEqual(
 	options: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<APIApplicationCommandOption>[],
 ) {
 	if (existing.length !== options.length) return false;
-	for (const option of existing) {
-		const foundOption = options.find((opt) => opt.name === option.name);
-		if (!foundOption || !optionEquals(option, foundOption)) return false;
+	for (const [index, option] of existing.entries()) {
+		const expectedOption = options[index];
+		if (!expectedOption || !optionEquals(option, expectedOption)) return false;
 	}
 
 	return true;
 }
 
 export function commandEquals(existing: APIApplicationCommand, command: RESTPostAPIApplicationCommandsJSONBody) {
+	const isGlobal = existing.guild_id === undefined;
 	if (
 		command.name !== existing.name ||
 		('description' in command && command.description !== existing.description) ||
 		// Discord API defaults type to chat input
 		(command.type ?? ApplicationCommandType.ChatInput) !== existing.type ||
 		command.options?.length !== existing.options?.length ||
-		command.default_member_permissions !== existing.default_member_permissions ||
-		(existing.guild_id === undefined && (command.dm_permission ?? true) !== existing.dm_permission) ||
+		(command.default_member_permissions ?? null) !== (existing.default_member_permissions ?? null) ||
+		(command.default_permission ?? true) !== (existing.default_permission ?? true) ||
+		(command.nsfw ?? false) !== (existing.nsfw ?? false) ||
+		(isGlobal &&
+			command.contexts === undefined &&
+			(command.dm_permission ?? true) !== (existing.dm_permission ?? true)) ||
+		(isGlobal && command.contexts !== undefined && !unorderedNumberArraysEqual(command.contexts, existing.contexts)) ||
+		(isGlobal &&
+			command.integration_types !== undefined &&
+			!unorderedNumberArraysEqual(command.integration_types, existing.integration_types)) ||
+		(command.handler !== undefined && command.handler !== existing.handler) ||
 		!isEqual(existing.name_localizations ?? {}, command.name_localizations ?? {}) ||
 		!isEqual(existing.description_localizations ?? {}, command.description_localizations ?? {})
 	) {

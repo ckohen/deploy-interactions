@@ -1,8 +1,18 @@
 import type {
+	APIApplicationCommand,
 	APIApplicationCommandChannelOption,
 	APIApplicationCommandIntegerOption,
+	APIApplicationCommandStringOption,
 	RESTPostAPIChatInputApplicationCommandsJSONBody,
 	RESTPostAPIContextMenuApplicationCommandsJSONBody,
+	RESTPostAPIPrimaryEntryPointApplicationCommandJSONBody,
+} from 'discord-api-types/v10';
+import {
+	ApplicationCommandOptionType,
+	ApplicationCommandType,
+	ApplicationIntegrationType,
+	EntryPointCommandHandlerType,
+	InteractionContextType,
 } from 'discord-api-types/v10';
 import { describe, test, expect } from 'vitest';
 import { type APIApplicationCommandChoicesOption, commandEquals, optionsEqual } from '../src/lib/Util.js';
@@ -223,19 +233,16 @@ describe('Application Command Equality', () => {
 
 		// Recursivity
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		options[0].options[0].type = 4;
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
 
 		// Autocomplete
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		options[2].options[0].autocomplete = false;
-		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
+		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(true);
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		options[2].options[1].autocomplete = false;
-		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
+		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(true);
 	});
 	test('Options lengths', () => {
 		const sentCommandNoOptions = { ...sentChatCommand };
@@ -247,7 +254,6 @@ describe('Application Command Equality', () => {
 		expect(optionsEqual(receivedChatCommand.options, options)).toBe(false);
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
 		options[0].options.shift();
 		expect(optionsEqual(receivedChatCommand.options, options)).toBe(false);
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
@@ -256,16 +262,13 @@ describe('Application Command Equality', () => {
 		const sentCommandNoOptions = { ...sentChatCommand };
 		delete sentCommandNoOptions.options;
 		let options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
 		(options[1].options[0] as APIApplicationCommandChoicesOption & { autocomplete: false }).choices!.shift();
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		(options[1].options[0] as APIApplicationCommandChoicesOption & { autocomplete: false }).choices![0].name =
 			'another-name';
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		(options[1].options[0] as APIApplicationCommandChoicesOption & { autocomplete: false }).choices![0].value =
 			'another value';
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
@@ -274,17 +277,13 @@ describe('Application Command Equality', () => {
 		const sentCommandNoOptions = { ...sentChatCommand };
 		delete sentCommandNoOptions.options;
 		let options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
 		(options[3].options[0] as APIApplicationCommandChannelOption).channel_types!.shift();
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		(options[3].options[0] as APIApplicationCommandChannelOption).channel_types![0] = 1;
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		(options[3].options[0] as APIApplicationCommandChannelOption).channel_types![0] = 2;
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		(options[3].options[0] as APIApplicationCommandChannelOption).channel_types![1] = 0;
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(true);
 	});
@@ -292,20 +291,134 @@ describe('Application Command Equality', () => {
 		const sentCommandNoOptions = { ...sentChatCommand };
 		delete sentCommandNoOptions.options;
 		let options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
 		(options[0].options[2] as APIApplicationCommandIntegerOption).min_value = 1;
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
 		delete (options[0].options[2] as APIApplicationCommandIntegerOption).min_value;
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
 		(options[0].options[2] as APIApplicationCommandIntegerOption).max_value = 1;
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
 		options = deepObjectArrayClone(receivedChatCommand.options);
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
 		delete (options[0].options[2] as APIApplicationCommandIntegerOption).max_value;
 		expect(commandEquals(receivedChatCommand, { ...sentCommandNoOptions, options })).toBe(false);
+	});
+});
+
+describe('Current application command properties', () => {
+	const existingCommand: APIApplicationCommand = {
+		id: '123456789012345678',
+		application_id: '234567890123456789',
+		name: 'modern',
+		description: 'A modern command',
+		type: ApplicationCommandType.ChatInput,
+		version: '345678901234567890',
+		default_member_permissions: null,
+		default_permission: true,
+		dm_permission: false,
+		nsfw: true,
+		integration_types: [ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall],
+		contexts: [InteractionContextType.Guild, InteractionContextType.BotDM],
+		options: [
+			{
+				type: ApplicationCommandOptionType.String,
+				name: 'query',
+				description: 'Search query',
+				required: true,
+				autocomplete: false,
+				min_length: 2,
+				max_length: 100,
+				choices: [
+					{ name: 'First', name_localizations: { 'es-ES': 'Primero' }, value: 'first' },
+					{ name: 'Second', value: 'second' },
+				],
+			},
+			{
+				type: ApplicationCommandOptionType.Boolean,
+				name: 'private',
+				description: 'Only show the result to you',
+			},
+		],
+	};
+
+	const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+		name: existingCommand.name,
+		description: existingCommand.description,
+		type: ApplicationCommandType.ChatInput,
+		nsfw: true,
+		integration_types: [ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall],
+		contexts: [InteractionContextType.BotDM, InteractionContextType.Guild],
+		options: structuredClone(existingCommand.options),
+	};
+
+	test('normalizes defaults and unordered command contexts', () => {
+		expect(commandEquals(existingCommand, command)).toBe(true);
+		expect(commandEquals(existingCommand, { ...command, default_member_permissions: '0' })).toBe(false);
+		expect(commandEquals(existingCommand, { ...command, default_permission: false })).toBe(false);
+		expect(commandEquals(existingCommand, { ...command, nsfw: false })).toBe(false);
+		expect(commandEquals(existingCommand, { ...command, contexts: [InteractionContextType.Guild] })).toBe(false);
+		expect(
+			commandEquals(existingCommand, {
+				...command,
+				integration_types: [ApplicationIntegrationType.GuildInstall],
+			}),
+		).toBe(false);
+	});
+
+	test('uses contexts instead of deprecated DM permissions when provided', () => {
+		expect(commandEquals(existingCommand, { ...command, dm_permission: true })).toBe(true);
+
+		const commandWithoutContexts = { ...command, contexts: undefined };
+		expect(commandEquals(existingCommand, { ...commandWithoutContexts, dm_permission: false })).toBe(true);
+		expect(commandEquals(existingCommand, { ...commandWithoutContexts, dm_permission: true })).toBe(false);
+	});
+
+	test('compares string length constraints and choice localizations', () => {
+		const options = structuredClone(command.options!);
+		(options[0] as APIApplicationCommandStringOption).min_length = 3;
+		expect(commandEquals(existingCommand, { ...command, options })).toBe(false);
+
+		(options[0] as APIApplicationCommandStringOption).min_length = 2;
+		(options[0] as APIApplicationCommandStringOption).max_length = 101;
+		expect(commandEquals(existingCommand, { ...command, options })).toBe(false);
+
+		(options[0] as APIApplicationCommandStringOption).max_length = 100;
+		(options[0] as APIApplicationCommandStringOption & { autocomplete: false }).choices![0]!.name_localizations = {
+			'es-ES': 'Uno',
+		};
+		expect(commandEquals(existingCommand, { ...command, options })).toBe(false);
+	});
+
+	test('compares display order for options and choices', () => {
+		const reorderedOptions = structuredClone(command.options!).reverse();
+		expect(commandEquals(existingCommand, { ...command, options: reorderedOptions })).toBe(false);
+
+		const reorderedChoices = structuredClone(command.options!);
+		(reorderedChoices[0] as APIApplicationCommandStringOption & { autocomplete: false }).choices!.reverse();
+		expect(commandEquals(existingCommand, { ...command, options: reorderedChoices })).toBe(false);
+	});
+
+	test('compares primary entry point handlers', () => {
+		const existingEntryPoint: APIApplicationCommand = {
+			id: '456789012345678901',
+			application_id: existingCommand.application_id,
+			name: 'launch',
+			description: 'Launch the activity',
+			type: ApplicationCommandType.PrimaryEntryPoint,
+			version: '567890123456789012',
+			default_member_permissions: null,
+			handler: EntryPointCommandHandlerType.DiscordLaunchActivity,
+		};
+		const entryPoint: RESTPostAPIPrimaryEntryPointApplicationCommandJSONBody = {
+			name: existingEntryPoint.name,
+			description: existingEntryPoint.description,
+			type: ApplicationCommandType.PrimaryEntryPoint,
+			handler: EntryPointCommandHandlerType.DiscordLaunchActivity,
+		};
+
+		expect(commandEquals(existingEntryPoint, entryPoint)).toBe(true);
+		expect(commandEquals(existingEntryPoint, { ...entryPoint, handler: EntryPointCommandHandlerType.AppHandler })).toBe(
+			false,
+		);
 	});
 });

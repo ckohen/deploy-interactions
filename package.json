@@ -8,13 +8,19 @@
 	"license": "Apache-2.0",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
 	"scripts": {
 		"test": "vitest run",
 		"prebuild": "yarn clean",
 		"build": "tsc --build --force src",
 		"clean": "rimraf dist",
-		"lint": "eslint src",
-		"lint:fix": "eslint src --fix",
+		"lint": "eslint .",
+		"lint:fix": "eslint . --fix",
 		"format": "prettier --write \"**/*.{ts,mts,cts,js,mjs,cjs,json,yml,yaml}\"",
 		"postinstall": "husky",
 		"prepack": "pinst --disable",
@@ -74,6 +80,6 @@
 		"vitest": "^5.0.0"
 	},
 	"engines": {
-		"node": ">=22.12.0"
+		"node": ">=24.0.0"
 	}
 }

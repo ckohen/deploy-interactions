@@ -8,6 +8,7 @@ import {
 	type RESTPostAPIApplicationCommandsResult,
 	type RESTPostAPIChatInputApplicationCommandsJSONBody,
 	type RESTPostAPIContextMenuApplicationCommandsJSONBody,
+	type RESTPostAPIPrimaryEntryPointApplicationCommandJSONBody,
 	type RESTPutAPIApplicationCommandsResult,
 	Routes,
 	type Snowflake,
@@ -35,13 +36,19 @@ export interface ApplicationCommandConfig<CommandType extends RESTPostAPIApplica
 /**
  * An implementation of the Map interface with stricter typings depending on the key used
  */
-export interface CommandMap
-	extends Map<ApplicationCommandType, ApplicationCommandConfig<RESTPostAPIApplicationCommandsJSONBody>[]> {
-	get: ((
-			key: ApplicationCommandType.Message | ApplicationCommandType.User,
-		) => ApplicationCommandConfig<RESTPostAPIContextMenuApplicationCommandsJSONBody>[] | undefined) & ((
+export interface CommandMap extends Map<
+	ApplicationCommandType,
+	ApplicationCommandConfig<RESTPostAPIApplicationCommandsJSONBody>[]
+> {
+	get(
 		key: ApplicationCommandType.ChatInput,
-	) => ApplicationCommandConfig<RESTPostAPIChatInputApplicationCommandsJSONBody>[] | undefined);
+	): ApplicationCommandConfig<RESTPostAPIChatInputApplicationCommandsJSONBody>[] | undefined;
+	get(
+		key: ApplicationCommandType.Message | ApplicationCommandType.User,
+	): ApplicationCommandConfig<RESTPostAPIContextMenuApplicationCommandsJSONBody>[] | undefined;
+	get(
+		key: ApplicationCommandType.PrimaryEntryPoint,
+	): ApplicationCommandConfig<RESTPostAPIPrimaryEntryPointApplicationCommandJSONBody>[] | undefined;
 }
 
 /**
@@ -254,9 +261,7 @@ async function deploySingleDestination(
 		const result = (await rest
 			.post(route, { body: command })
 			.catch((error) => error as DiscordAPIError | HTTPError)) as
-			| DiscordAPIError
-			| HTTPError
-			| RESTPostAPIApplicationCommandsResult;
+			DiscordAPIError | HTTPError | RESTPostAPIApplicationCommandsResult;
 		if (result instanceof Error) {
 			// Pass this up to callee as these errors indicate future requests will fail
 			if ([401, 403, 404].includes(result.status)) throw result;
@@ -275,14 +280,12 @@ async function deploySingleDestination(
 }
 
 // Config docs are in DeployConfig interace
-/* eslint-disable jsdoc/check-param-names */
 /**
  * Deploys a set of application commands
  *
  * @param config - The configuration options for deploying
  * @returns The results of the deploy
  */
-/* eslint-enable jsdoc/check-param-names */
 export async function deploy({
 	applicationId,
 	bulkOverwrite = false,
@@ -304,7 +307,8 @@ export async function deploy({
 	const chatCommands = commands.get(ApplicationCommandType.ChatInput) ?? [];
 	const userCommands = commands.get(ApplicationCommandType.User) ?? [];
 	const messageCommands = commands.get(ApplicationCommandType.Message) ?? [];
-	const allCommands = [...chatCommands, ...userCommands, ...messageCommands];
+	const primaryEntryPointCommands = commands.get(ApplicationCommandType.PrimaryEntryPoint) ?? [];
+	const allCommands = [...chatCommands, ...userCommands, ...messageCommands, ...primaryEntryPointCommands];
 	if (allCommands.length === 0) {
 		return null;
 	}

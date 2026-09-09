@@ -1,26 +1,40 @@
-import { type PathLike, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import type { PathLike } from 'node:fs';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 import chalk from 'chalk';
 import { ApplicationCommandType, type RESTPostAPIApplicationCommandsJSONBody } from 'discord-api-types/v10';
-import type { InteractionsDeployConfig, PathLikeWithDestinationConfig } from '../bin/deploy-interactions';
-import type { ApplicationCommandConfig } from './Deploy';
+import type { InteractionsDeployConfig, PathLikeWithDestinationConfig } from '../bin/deploy-interactions.js';
+import type { ApplicationCommandConfig } from './Deploy.js';
 
-export function getStoredConfig(debug: boolean, overrideConfig?: string): InteractionsDeployConfig | null {
+async function importModule(path: string): Promise<Record<string, unknown>> {
+	const url = pathToFileURL(resolve(path)).href;
+	return import(/* @vite-ignore */ url) as Promise<Record<string, unknown>>;
+}
+
+async function readConfig(path: string): Promise<InteractionsDeployConfig> {
+	if (path.endsWith('.json')) {
+		return JSON.parse(await readFile(path, 'utf8')) as InteractionsDeployConfig;
+	}
+
+	const imported = await importModule(path);
+	return (imported.default ?? imported) as InteractionsDeployConfig;
+}
+
+export async function getStoredConfig(
+	debug: boolean,
+	overrideConfig?: string,
+): Promise<InteractionsDeployConfig | null> {
 	const cwd = process.cwd();
-	const cwdFiles = readdirSync('./');
-	let config: InteractionsDeployConfig | null = null;
+	const cwdFiles = new Set(await readdir('.'));
 	if (overrideConfig) {
 		try {
-			if (overrideConfig.endsWith('.js') || overrideConfig.endsWith('.cjs')) {
-				// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-				config = require(`${cwd}/${overrideConfig}`) as InteractionsDeployConfig;
+			if (!/\.(?:cjs|js|json|mjs)$/i.test(overrideConfig)) {
+				throw new Error('Config path provided is not a supported file type');
 			}
 
-			if (overrideConfig.endsWith('.json')) {
-				config = JSON.parse(readFileSync(overrideConfig, 'utf8')) as InteractionsDeployConfig;
-			}
-
-			if (!config) throw new Error('Config path provided is not a supported file type');
+			return await readConfig(overrideConfig);
 		} catch (error) {
 			if (!debug) {
 				console.error(
@@ -36,52 +50,33 @@ export function getStoredConfig(debug: boolean, overrideConfig?: string): Intera
 		}
 	}
 
-	if (!config && cwdFiles.includes('.interactionsrc.js')) {
+	const configCandidates = ['.interactionsrc.js', '.interactionsrc.mjs', '.interactionsrc.cjs', '.interactionsrc.json'];
+	for (const candidate of configCandidates) {
+		if (!cwdFiles.has(candidate)) continue;
+
 		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-			config = require(`${cwd}/.interactionsrc.js`) as InteractionsDeployConfig;
+			return await readConfig(resolve(cwd, candidate));
 		} catch (error) {
 			if (debug) {
-				console.error(chalk`{green Debug} Found js but could not import`, error);
+				console.error(chalk`{green Debug} Found ${candidate} but could not load it`, error);
 			}
 		}
 	}
 
-	if (!config && cwdFiles.includes('.interactionsrc.cjs')) {
+	if (cwdFiles.has('package.json')) {
 		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-			config = require(`${cwd}/.interactionsrc.cjs`) as InteractionsDeployConfig;
-		} catch (error) {
-			if (debug) {
-				console.error(chalk`{green Debug} Found cjs but could not import`, error);
-			}
-		}
-	}
-
-	if (!config && cwdFiles.includes('.interactionsrc.json')) {
-		try {
-			config = JSON.parse(readFileSync('.interactionsrc.json', 'utf8')) as InteractionsDeployConfig;
-		} catch (error) {
-			if (debug) {
-				console.error(chalk`{green Debug} Found json config but could not read`, error);
-			}
-		}
-	}
-
-	if (!config && cwdFiles.includes('package.json')) {
-		try {
-			const pack = JSON.parse(readFileSync('package.json', 'utf8')) as Record<string, unknown>;
+			const pack = JSON.parse(await readFile('package.json', 'utf8')) as Record<string, unknown>;
 			if (pack.interactionsConfig) {
-				config = pack.interactionsConfig as InteractionsDeployConfig;
+				return pack.interactionsConfig as InteractionsDeployConfig;
 			}
 		} catch (error) {
 			if (debug) {
-				console.error(chalk`{green Debug} Found json config but could not read`, error);
+				console.error(chalk`{green Debug} Found package.json but could not read interactionsConfig`, error);
 			}
 		}
 	}
 
-	return config;
+	return null;
 }
 
 function isJSONEncodable(data: unknown): data is Record<string, unknown> & { toJSON(): unknown } {
@@ -98,15 +93,18 @@ function isJSONEncodable(data: unknown): data is Record<string, unknown> & { toJ
 async function getCommand(path: PathLike, named?: string): Promise<RESTPostAPIApplicationCommandsJSONBody> {
 	let data: unknown;
 	if (typeof path !== 'string' || path.endsWith('.json')) {
-		data = JSON.parse(readFileSync(path, 'utf8'));
-	} else if (path.endsWith('.js') || path.endsWith('.cjs')) {
-		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-			data = require(`${process.cwd()}/${path}`);
-		} catch {
-			if (path.endsWith('.js')) {
-				data = await import(`file://${process.cwd()}/${path}`);
-			}
+		data = JSON.parse(await readFile(path, 'utf8'));
+	} else if (/\.(?:cjs|js|mjs)$/i.test(path)) {
+		const imported = await importModule(path);
+		if (named) {
+			const defaultExport = imported.default;
+			data =
+				imported[named] ??
+				(defaultExport && typeof defaultExport === 'object'
+					? (defaultExport as Record<string, unknown>)[named]
+					: undefined);
+		} else {
+			data = imported.default ?? imported;
 		}
 
 		if (isJSONEncodable(data)) {
@@ -115,7 +113,10 @@ async function getCommand(path: PathLike, named?: string): Promise<RESTPostAPIAp
 	}
 
 	if (data && typeof data === 'object') {
-		data = named ? (data as Record<string, unknown>)[named] : data;
+		if (named && (typeof path !== 'string' || path.endsWith('.json'))) {
+			data = (data as Record<string, unknown>)[named];
+		}
+
 		if (typeof data !== 'object' || data === null)
 			throw new TypeError(`Read command file ${path.toString()} but its export is not a command`);
 		const likelyCommand = 'name' in data && ('description' in data || 'type' in data);
@@ -143,22 +144,22 @@ async function getFolderCommands(
 	debug: boolean,
 	named?: string,
 ): Promise<RESTPostAPIApplicationCommandsJSONBody[]> {
-	const commands: RESTPostAPIApplicationCommandsJSONBody[] = [];
-	const dir = readdirSync(path).filter(
-		(filename) => filename.endsWith('.js') || filename.endsWith('.cjs') || filename.endsWith('.json'),
-	);
-	for (const file of dir) {
-		try {
-			const command = await getCommand(`${path}/${file}`, named);
-			commands.push(command);
-		} catch (error) {
-			if (debug) {
-				console.log(chalk`{green Debug}`, error);
-			}
-		}
-	}
+	const dir = (await readdir(path)).filter((filename) => /\.(?:cjs|js|json|mjs)$/i.test(filename));
+	const commands = await Promise.all(
+		dir.map(async (file): Promise<RESTPostAPIApplicationCommandsJSONBody | null> => {
+			try {
+				return await getCommand(resolve(path, file), named);
+			} catch (error) {
+				if (debug) {
+					console.log(chalk`{green Debug}`, error);
+				}
 
-	return commands;
+				return null;
+			}
+		}),
+	);
+
+	return commands.filter((command): command is RESTPostAPIApplicationCommandsJSONBody => command !== null);
 }
 
 export interface CommandsResult {
@@ -185,7 +186,7 @@ export async function getCommands(
 		}
 
 		// If the file is a single file
-		if (typeof path !== 'string' || path.endsWith('.js') || path.endsWith('.cjs') || path.endsWith('.json')) {
+		if (typeof path !== 'string' || /\.(?:cjs|js|json|mjs)$/i.test(path)) {
 			try {
 				pathCommands.push(await getCommand(path, named));
 			} catch (error_) {
@@ -225,7 +226,7 @@ export async function getCommands(
 	};
 }
 
-export function storeConfig(config: InteractionsDeployConfig, name: string): boolean {
+export async function storeConfig(config: InteractionsDeployConfig, name: string): Promise<boolean> {
 	try {
 		const mutableConfig = { ...config };
 		if (mutableConfig.commands?.length) {
@@ -254,11 +255,16 @@ export function storeConfig(config: InteractionsDeployConfig, name: string): boo
 		// Don't store the token
 		delete mutableConfig.token;
 		let stringifiedConfig = JSON.stringify(mutableConfig, null, '\t');
-		if (name.endsWith('.js') || name.endsWith('.cjs')) {
-			stringifiedConfig = `module.exports = ${stringifiedConfig.replaceAll(/"(?<key>\w+?)"(?=:)/gi, '$<key>')}`;
+		const javascriptConfig = stringifiedConfig.replaceAll(/"(?<key>\w+?)"(?=:)/gi, '$<key>');
+		if (name.endsWith('.cjs')) {
+			stringifiedConfig = `module.exports = ${javascriptConfig};\n`;
+		} else if (name.endsWith('.js') || name.endsWith('.mjs')) {
+			stringifiedConfig = `export default ${javascriptConfig};\n`;
+		} else {
+			stringifiedConfig += '\n';
 		}
 
-		writeFileSync(name, stringifiedConfig);
+		await writeFile(name, stringifiedConfig);
 		return true;
 	} catch (error) {
 		if (config.debug) {

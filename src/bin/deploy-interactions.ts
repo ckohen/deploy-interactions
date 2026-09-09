@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { existsSync, type PathLike } from 'node:fs';
+import type { PathLike } from 'node:fs';
+import { access } from 'node:fs/promises';
 import process from 'node:process';
 import { createInterface as createPrompt } from 'node:readline';
 import { setTimeout, clearTimeout } from 'node:timers';
@@ -12,10 +13,12 @@ import {
 	type Snowflake,
 } from 'discord-api-types/v10';
 import * as dotenv from 'dotenv';
-import { version } from '../../package.json';
+import packageJson from '../../package.json' with { type: 'json' };
 import { deploy, type ApplicationCommandConfig, type CommandMap, type DeployResponse } from '../lib/Deploy.js';
 import { getCommands, getStoredConfig, storeConfig } from '../lib/FileParser.js';
 import outputResults from '../lib/LogCompiler.js';
+
+const { version } = packageJson;
 
 /**
  * The configuration that can be used to deploy commands using the `deploy-interactions` commands
@@ -186,7 +189,7 @@ command
 		'-s, --store [filename]',
 		'Store the generated configuration (excluding token) to .interactionsrc.json or the specified file',
 	)
-	.option('--config <file>', 'The path to a configuration file to use (js, json)')
+	.option('--config <file>', 'The path to a configuration file to use (js, mjs, cjs, json)')
 	.option('--debug', 'Output debug logs from file parsing')
 	.version(version);
 
@@ -196,9 +199,9 @@ const overrideOptions = command.opts<CommandOptions>();
 
 /**
  * We use process.cwd() and dotenv to locate configs and the commands,
- * advise adding npm script so cwd is always what is expected
+ * advise adding a package script so cwd is always what is expected
  */
-dotenv.config(); // Not sure if this should be called here or let users call it
+dotenv.config({ quiet: true });
 
 // Setup additional prompt CLI
 const prompt = createPrompt({
@@ -231,17 +234,20 @@ function mergeOverrides(output: InteractionsDeployConfig, input: CommandOptions)
 
 interface InputOptions<T = string> {
 	query: string;
-	transformer?(input: string): T;
-	validator?(input: T | string): boolean;
+	transformer?: (input: string) => T;
+	validator?: (input: T | string) => Promise<boolean> | boolean;
 }
 
 async function getInput<T>(
 	options:
-		| (InputOptions<T> & { transformer(input: string): T })
-		| (InputOptions<T> & { transformer(input: string): T; validator(input: T): boolean }),
+		| (InputOptions<T> & {
+				transformer: (input: string) => T;
+				validator: (input: T) => Promise<boolean> | boolean;
+		  })
+		| (InputOptions<T> & { transformer: (input: string) => T }),
 ): Promise<T>;
 async function getInput(
-	options: InputOptions | (InputOptions & { validator(input: string): boolean }),
+	options: InputOptions | (InputOptions & { validator: (input: string) => Promise<boolean> | boolean }),
 ): Promise<string>;
 async function getInput<T = string>({ query, transformer, validator }: InputOptions<T>): Promise<T | string> {
 	const controller = new AbortController();
@@ -261,7 +267,7 @@ async function getInput<T = string>({ query, transformer, validator }: InputOpti
 		output = transformer(response);
 	}
 
-	if (validator && !validator(output)) {
+	if (validator && !(await validator(output))) {
 		if (transformer) {
 			return getInput<T>({ query, transformer, validator });
 		}
@@ -280,9 +286,7 @@ async function getYesNoInput(query: string): Promise<boolean> {
 			if (input.toLowerCase() === 'n') return false;
 			return null;
 		},
-		validator: (input) => {
-			return input !== null;
-		},
+		validator: (input) => input !== null,
 	});
 	// Something went really wrong
 	if (out === null) throw new Error('Received null when it should not possible');
@@ -298,6 +302,7 @@ async function disambiguate(
 		[ApplicationCommandType.ChatInput]: 'Chat Input Command',
 		[ApplicationCommandType.User]: 'User Command',
 		[ApplicationCommandType.Message]: 'Message Command',
+		[ApplicationCommandType.PrimaryEntryPoint]: 'Primary Entry Point Command',
 	};
 	for (const name of names) {
 		const possibleCommands = commands.filter((command) => command.name === name);
@@ -306,7 +311,7 @@ async function disambiguate(
 			continue;
 		}
 
-		// Compile type list: Chat Input Command, User Command, and Message Command
+		// Compile the human-readable command type list
 		const commandTypes = possibleCommands.reduce((str, current, index) => {
 			const currentName = TypeNames[current.type ?? ApplicationCommandType.ChatInput];
 			switch (index) {
@@ -324,7 +329,7 @@ async function disambiguate(
 		const keepType = await getInput<ApplicationCommandType | -1 | 0>({
 			query: `Please enter the first letter (e.g. u for user) of the type of command that this config is for (or a for all)`,
 			transformer: (input) => {
-				if (!['a', 'c', 'm', 'u'].includes(input.toLowerCase())) return -1;
+				if (!['a', 'c', 'm', 'p', 'u'].includes(input.toLowerCase())) return -1;
 				switch (input.toLowerCase()) {
 					case 'c':
 						return ApplicationCommandType.ChatInput;
@@ -332,6 +337,8 @@ async function disambiguate(
 						return ApplicationCommandType.User;
 					case 'm':
 						return ApplicationCommandType.Message;
+					case 'p':
+						return ApplicationCommandType.PrimaryEntryPoint;
 					case 'a':
 						return 0;
 					default:
@@ -340,6 +347,8 @@ async function disambiguate(
 			},
 			validator: (input) => input !== -1,
 		});
+		if (keepType === -1) throw new Error('Received an invalid command type after validation');
+
 		// User wants all
 		if (keepType === 0) {
 			for (const command of possibleCommands) {
@@ -384,18 +393,19 @@ async function runAsync() {
 		typeof overrideOptions.store === 'string'
 			? overrideOptions.store
 			: overrideOptions.store === true
-			? '.interactionsrc.json'
-			: null;
+				? '.interactionsrc.json'
+				: null;
 	/**
 	 * For options not provided, attempt to read config from:
 	 * .interactionsrc.js
+	 * .interactionsrc.mjs
 	 * .interactionsrc.cjs
 	 * .interactionsrc.json
 	 * package.json - interactionsConfig
 	 */
 	let storedConfig: InteractionsDeployConfig = {};
 	try {
-		storedConfig = getStoredConfig(overrideOptions.debug ?? false, overrideOptions.config) ?? {};
+		storedConfig = (await getStoredConfig(overrideOptions.debug ?? false, overrideOptions.config)) ?? {};
 	} catch {
 		prompt.close();
 		process.exit(1);
@@ -445,14 +455,17 @@ async function runAsync() {
 	if ((!('commands' in config) || config.commands!.length === 0) && !('commandDefinitions' in config)) {
 		config.commands = await getInput<PathLike[]>({
 			query: 'Please enter the path (relative to the current directory) to the files containing command definitions',
-			transformer: (input) => {
-				if (existsSync(input)) return [input];
-				return [];
-			},
-			validator: (input) => {
-				if (input.length) return true;
-				console.log(chalk.redBright('The file or folder specified does not seem to exist'));
-				return false;
+			transformer: (input) => [input],
+			validator: async ([input]) => {
+				if (!input) return false;
+
+				try {
+					await access(input);
+					return true;
+				} catch {
+					console.log(chalk.redBright('The file or folder specified does not seem to exist'));
+					return false;
+				}
 			},
 		});
 		// Collect named export details if not provided and not stored
@@ -527,7 +540,7 @@ async function runAsync() {
 			? config.commandDefinitions!.map((command) => ({
 					name: command.name,
 					type: command.type ?? ApplicationCommandType.ChatInput,
-			  }))
+				}))
 			: [];
 		const guildCommands = new Map<Snowflake, InteractionsDeployCommandConfig[]>();
 		if (!deployAllGlobal && !getGuildsOnly) {
@@ -603,7 +616,7 @@ async function runAsync() {
 	/* eslint-enable require-atomic-updates */
 
 	if (store) {
-		storeConfig(config, store);
+		await storeConfig(config, store);
 	}
 
 	let results: DeployResponse | null = null;
@@ -622,6 +635,10 @@ async function runAsync() {
 		[
 			ApplicationCommandType.Message,
 			deployableCommands.filter((command) => command.command.type === ApplicationCommandType.Message),
+		],
+		[
+			ApplicationCommandType.PrimaryEntryPoint,
+			deployableCommands.filter((command) => command.command.type === ApplicationCommandType.PrimaryEntryPoint),
 		],
 	]) as CommandMap;
 	results = await deploy({

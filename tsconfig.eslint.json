@@ -3,6 +3,25 @@
 	"compilerOptions": {
 		"allowJs": true
 	},
-	"include": ["**/*.ts", "**/*.js", "**/*.test.ts", "**/*.test.js", "**/*.spec.ts", "**/*.spec.js"],
+	"include": [
+		"**/*.ts",
+		"**/*.mts",
+		"**/*.cts",
+		"**/*.js",
+		"**/*.mjs",
+		"**/*.cjs",
+		"**/*.test.ts",
+		"**/*.test.mts",
+		"**/*.test.cts",
+		"**/*.test.js",
+		"**/*.test.mjs",
+		"**/*.test.cjs",
+		"**/*.spec.ts",
+		"**/*.spec.mts",
+		"**/*.spec.cts",
+		"**/*.spec.js",
+		"**/*.spec.mjs",
+		"**/*.spec.cjs"
+	],
 	"exclude": []
 }

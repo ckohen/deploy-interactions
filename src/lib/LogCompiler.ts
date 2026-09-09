@@ -1,12 +1,13 @@
 import chalk from 'chalk';
 import { ApplicationCommandType, type Snowflake } from 'discord-api-types/v10';
 import { table } from 'table';
-import type { DeployResponse, SingleDeployResponse } from './Deploy';
+import type { DeployResponse, SingleDeployResponse } from './Deploy.js';
 
 const TypeNames = {
 	[ApplicationCommandType.ChatInput]: 'Chat Input',
 	[ApplicationCommandType.User]: 'User',
 	[ApplicationCommandType.Message]: 'Message',
+	[ApplicationCommandType.PrimaryEntryPoint]: 'Primary Entry Point',
 };
 
 function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, dry: boolean): void {

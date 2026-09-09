@@ -15,18 +15,16 @@
 
 		// Modules
 		"module": "NodeNext",
-		"moduleResolution": "node",
+		"moduleResolution": "NodeNext",
 		"resolveJsonModule": true,
+		"types": ["node"],
 
 		// Emit
 		"composite": true,
 		"declaration": true,
 		"declarationMap": true,
-		"importHelpers": true,
-		"importsNotUsedAsValues": "error",
 		"inlineSources": true,
 		"newLine": "lf",
-		"noEmitHelpers": true,
 		"sourceRoot": "./",
 		"rootDir": "./",
 		"outDir": ".",

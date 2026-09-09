@@ -1,4 +1,3 @@
-import type { AddUndefinedToPossiblyUndefinedPropertiesOfInterface } from 'discord-api-types/utils/internals.js';
 import {
 	type APIApplicationCommand,
 	type APIApplicationCommandOption,
@@ -12,12 +11,16 @@ import {
 	type APIApplicationCommandNumberOption,
 	type APIApplicationCommandOptionChoice,
 } from 'discord-api-types/v10';
-import { default as isEqual } from 'fast-deep-equal';
+import isEqual from 'fast-deep-equal';
+
+type AddUndefinedToPossiblyUndefinedPropertiesOfInterface<Base> = {
+	[Key in keyof Base]: Base[Key] extends Exclude<Base[Key], undefined>
+		? AddUndefinedToPossiblyUndefinedPropertiesOfInterface<Base[Key]>
+		: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<Base[Key]> | undefined;
+};
 
 export type APIApplicationCommandChoicesOption =
-	| APIApplicationCommandIntegerOption
-	| APIApplicationCommandNumberOption
-	| APIApplicationCommandStringOption;
+	APIApplicationCommandIntegerOption | APIApplicationCommandNumberOption | APIApplicationCommandStringOption;
 
 export function isChoicesOption(
 	option: AddUndefinedToPossiblyUndefinedPropertiesOfInterface<APIApplicationCommandOption>,
@@ -75,7 +78,7 @@ export function optionEquals(
 				const foundChoice = (optionChoices as APIApplicationCommandOptionChoice[]).find(
 					(optChoice) => optChoice.name === choice.name,
 				);
-				if (!foundChoice || foundChoice.value !== choice.value) return false;
+				if (foundChoice?.value !== choice.value) return false;
 			}
 		}
 	}
@@ -83,7 +86,6 @@ export function optionEquals(
 	if (isSubcommandOption(existing) && isSubcommandOption(option)) {
 		if (existing.options?.length !== option.options?.length) return false;
 		if (existing.options && option.options) {
-			// eslint-disable-next-line @typescript-eslint/no-use-before-define
 			return optionsEqual(existing.options, option.options);
 		}
 	}
@@ -97,13 +99,9 @@ export function optionEquals(
 		}
 	}
 
-	// eslint-disable-next-line sonarjs/prefer-single-boolean-return
-	if (
-		isNumericalOption(existing) &&
-		isNumericalOption(option) &&
-		(existing.min_value !== option.min_value || existing.max_value !== option.max_value)
-	)
-		return false;
+	if (isNumericalOption(existing) && isNumericalOption(option)) {
+		return existing.min_value === option.min_value && existing.max_value === option.max_value;
+	}
 
 	return true;
 }

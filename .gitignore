@@ -1,5 +1,6 @@
 # Packages
 node_modules/
+.yarn/install-state.gz
 
 # Log files
 logs/
@@ -22,4 +23,5 @@ docs/
 # Miscellaneous
 .tmp/
 coverage/
+.vitest/
 tsconfig.tsbuildinfo

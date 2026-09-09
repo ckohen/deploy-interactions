@@ -10,7 +10,7 @@ deploy-interactions is a [Node.js](https://nodejs.org) module providing a powerf
 
 ## Install
 
-**Node.js 16.6.0 or newer is required.**
+**Node.js 22.12.0 or newer is required.**
 
 ```sh-session
 npm install deploy-interactions
@@ -26,10 +26,12 @@ Things you will need to get started:
 
 If you have these three things and all you want to do is deploy globally, its as simple as running `npx --no-install deploy-interactions` and the CLI will guide you through entering this information.
 
-**Note**: It is highly recommended to add a script to your `package.json` to run this command instead of running it with npx. To do so simply add 
+**Note**: It is highly recommended to add a script to your `package.json` to run this command instead of running it with npx. To do so simply add
+
 ```json
 "deploy": "deploy-interactions"
 ```
+
 and then you can use `npm run deploy` to run the command anywhere in the project.
 
 ### Commands
@@ -37,6 +39,7 @@ and then you can use `npm run deploy` to run the command anywhere in the project
 Different projects can vary wildly in structure depending on need. As such your file structure may be vastly different than another persons. There is no required file structure to use deploy-interactions, but there are some structures that make it easier to configure, so here are some samples.
 
 (Easy) A folder with all commands. Deploy all commands using `deploy-interactions -c commands`
+
 ```
 .
 |-- commands
@@ -45,6 +48,7 @@ Different projects can vary wildly in structure depending on need. As such your 
 ```
 
 (Medium) Multiple folders. Deploy all commands using `deploy-interactions -c commands/example commands/sample`
+
 ```
 .
 |-- commands
@@ -58,6 +62,7 @@ Different projects can vary wildly in structure depending on need. As such your 
 ```
 
 (Hard) Individual files (typically in folders with other files). Deploy all commands using `deploy-interactions -c handlers/example/example-command.js handlers/sample/sample-command.js`
+
 ```
 .
 |-- handlers
@@ -69,6 +74,7 @@ Different projects can vary wildly in structure depending on need. As such your 
         |-- not-a-command.js
         |-- sample-command.js
 ```
+
 **Note**: The file extension is required when deploying a single command, otherwise the cli considers it a folder
 
 Another common use case is exporting the command definition as a named export. This is handled via the `--named-export <name>` CLI argument or the `namedExport` config key. **All** exports must use the same key.
@@ -108,8 +114,8 @@ The command line Q&A is meant as a first time setup and does not provide all the
 
 Configuration Files give you the most flexibility in setting up how you deploy your application commands. There are several different ways to store the configuration that will automatically be checked.
 
-- Javascript - Use `.interactionsrc.js` and export an object containing your configuration.
-- Javascript (ESM) - Use `.interactionsrc.cjs` when in an ESM environment.
+- JavaScript (ESM) - Use `.interactionsrc.js` in a project with `"type": "module"`, or use `.interactionsrc.mjs`.
+- JavaScript (CommonJS) - Use `.interactionsrc.cjs` and export an object with `module.exports`.
 - JSON - Use `.interactionsrc.json` to define the configuration.
 - package.json - create a `interactionsConfig` property in your `package.json` that contains the configuration.
 
@@ -181,36 +187,28 @@ The path and the destinations that all commands specified in the path will go to
 
 This is a quick overview of the API, for full API reference see TODO TSDOC
 
-This module also provides an API for deploying commands in code using recommended best practices. It uses ESM style exports to be compatible with ESM, but is still compatible with CommonJS.
+This module also provides an API for deploying commands in code using recommended best practices.
 
-The default export is `deploy`, the function used to deploy commands.
+The default export is `deploy`, the function used to deploy commands. `deploy-interactions` is ESM-only; CommonJS applications can load it with dynamic `import()`.
 
 In the following examples, config is not actually valid
-```js
-// CommonJS
-const deploy = require('deploy-interactions').default
-
-const config = {}
-
-deploy(config)
-```
 
 ```mjs
 // ESM
-import deploy from 'deploy-interactions'
+import deploy from 'deploy-interactions';
 
 const config = {};
 
-deploy(config)
+deploy(config);
 ```
 
 ```ts
 // TypeScript
-import deploy, { DeployConfig } from 'deploy-interactions'
+import deploy, { type DeployConfig } from 'deploy-interactions';
 
 const config: DeployConfig = {};
 
-void deploy(config)
+void deploy(config);
 ```
 
 There are also a few utility functions exported that are used internally to check equality between a [Discord Application Command](https://discord.com/developers/docs/interactions/application-commands#application-command-object-application-command-structure) and a [API Ready Application Command](https://discord.com/developers/docs/interactions/application-commands#create-global-application-command-json-params) but can be useful in your code as well.

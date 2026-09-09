@@ -6,12 +6,11 @@ export default defineConfig({
 		passWithNoTests: true,
 		coverage: {
 			enabled: true,
-			all: true,
 			reporter: ['text', 'lcov', 'cobertura'],
-			provider: 'c8',
-			include: ['src'],
+			provider: 'v8',
+			include: ['src/**/*.ts'],
 			exclude: [
-				// All ts files that only contain types, due to ALL
+				// All ts files that only contain types
 				'**/*.{interface,type,d}.ts',
 				// All index files that *should* only contain exports from other files
 				'**/index.{js,ts}',

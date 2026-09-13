@@ -6,6 +6,7 @@ import process from 'node:process';
 import { createInterface as createPrompt } from 'node:readline';
 import { setTimeout, clearTimeout } from 'node:timers';
 import chalk from 'chalk';
+import chalkTemplate from 'chalk-template';
 import { Command } from 'commander';
 import {
 	ApplicationCommandType,
@@ -536,7 +537,7 @@ async function runAsync() {
 		}
 
 		const validNames = config.commandDefinitions!.map((command) => command.name);
-		console.log(chalk`{cyan Commands found}: {yellowBright ${validNames.join(', ')}}`);
+		console.log(chalkTemplate`{cyan Commands found}: {yellowBright ${validNames.join(', ')}}`);
 		// Determine whether this is first time setup, and if so, check global deploy config
 		let deployAllGlobal = false;
 		if (overrideOptions.global) {
@@ -616,7 +617,7 @@ async function runAsync() {
 
 	if (config.developer && !('devGuildId' in config)) {
 		config.devGuildId = await getInput({
-			query: chalk`{green Developer Mode Enabled}, please provide an id for the guild to deploy commands to`,
+			query: chalkTemplate`{green Developer Mode Enabled}, please provide an id for the guild to deploy commands to`,
 			validator: (input) => input.length >= 16 && input.length <= 20,
 		});
 	}

@@ -1,5 +1,6 @@
 import { type DiscordAPIError, type HTTPError, makeURLSearchParams, REST } from '@discordjs/rest';
 import chalk from 'chalk';
+import chalkTemplate from 'chalk-template';
 import {
 	type APIApplicationCommand,
 	ApplicationCommandType,
@@ -225,7 +226,7 @@ async function deploySingleDestination(
 	console.log(`${bulk ? chalk.red('Overwriting') : 'Deploying'} commands ${guildId ? `to ${guildId}` : 'globally'}.`);
 	if (dryRun) {
 		if (bulk) {
-			console.log(chalk`{greenBright Successfully} bulk updated.`);
+			console.log(chalkTemplate`{greenBright Successfully} bulk updated.`);
 		} else {
 			console.log(`Finished ${guildId ? `guild (${guildId})` : 'global'} deploy`);
 		}
@@ -236,7 +237,7 @@ async function deploySingleDestination(
 	if (bulk) {
 		// A promise rejection here is handled by the callee
 		const result = (await rest.put(route, { body: commands })) as RESTPutAPIApplicationCommandsResult;
-		console.log(chalk`{greenBright Successfully} bulk updated.`);
+		console.log(chalkTemplate`{greenBright Successfully} bulk updated.`);
 		return { skipped: [], errored: [], commands: result };
 	}
 

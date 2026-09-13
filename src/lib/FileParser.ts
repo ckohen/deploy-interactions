@@ -3,7 +3,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import chalk from 'chalk';
+import chalkTemplate from 'chalk-template';
 import { ApplicationCommandType, type RESTPostAPIApplicationCommandsJSONBody } from 'discord-api-types/v10';
 import type { InteractionsDeployConfig, PathLikeWithDestinationConfig } from '../bin/deploy-interactions.js';
 import type { ApplicationCommandConfig } from './Deploy.js';
@@ -43,7 +43,7 @@ export async function getStoredConfig(
 			}
 
 			if (debug) {
-				console.error(chalk`{green Debug} Provided config path could not be resolved`, error);
+				console.error(chalkTemplate`{green Debug} Provided config path could not be resolved`, error);
 			}
 
 			throw error;
@@ -58,7 +58,7 @@ export async function getStoredConfig(
 			return await readConfig(resolve(cwd, candidate));
 		} catch (error) {
 			if (debug) {
-				console.error(chalk`{green Debug} Found ${candidate} but could not load it`, error);
+				console.error(chalkTemplate`{green Debug} Found ${candidate} but could not load it`, error);
 			}
 		}
 	}
@@ -71,7 +71,7 @@ export async function getStoredConfig(
 			}
 		} catch (error) {
 			if (debug) {
-				console.error(chalk`{green Debug} Found package.json but could not read interactionsConfig`, error);
+				console.error(chalkTemplate`{green Debug} Found package.json but could not read interactionsConfig`, error);
 			}
 		}
 	}
@@ -151,7 +151,7 @@ async function getFolderCommands(
 				return await getCommand(resolve(path, file), named);
 			} catch (error) {
 				if (debug) {
-					console.log(chalk`{green Debug}`, error);
+					console.log(chalkTemplate`{green Debug}`, error);
 				}
 
 				return null;
@@ -191,7 +191,7 @@ export async function getCommands(
 				pathCommands.push(await getCommand(path, named));
 			} catch (error_) {
 				if (debug) {
-					console.log(chalk`{green Debug}`, error_);
+					console.log(chalkTemplate`{green Debug}`, error_);
 				}
 			}
 		} else {
@@ -215,7 +215,7 @@ export async function getCommands(
 	}
 
 	if (commands.length === 0 && finalCommands.length === 0) {
-		console.error(chalk`{redBright Error} No commands found in all specified directories!`);
+		console.error(chalkTemplate`{redBright Error} No commands found in all specified directories!`);
 		error = true;
 	}
 
@@ -268,7 +268,7 @@ export async function storeConfig(config: InteractionsDeployConfig, name: string
 		return true;
 	} catch (error) {
 		if (config.debug) {
-			console.log(chalk`{green Debug} Error storing config`, error);
+			console.log(chalkTemplate`{green Debug} Error storing config`, error);
 		}
 
 		return false;

@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import chalkTemplate from 'chalk-template';
 import { ApplicationCommandType, type Snowflake } from 'discord-api-types/v10';
 import { table } from 'table';
 import type { DeployResponse, SingleDeployResponse } from './Deploy.js';
@@ -12,13 +13,13 @@ const TypeNames = {
 
 function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, dry: boolean): void {
 	if (data.bulkError) {
-		console.log(chalk`Deploy to ${guildId} {redBright failed}: ${data.bulkError.message}`);
+		console.log(chalkTemplate`Deploy to ${guildId} {redBright failed}: ${data.bulkError.message}`);
 		return;
 	}
 
-	let header = chalk`Deploy to ${guildId} {greenBright successful}`;
+	let header = chalkTemplate`Deploy to ${guildId} {greenBright successful}`;
 	if (data.errored.length) {
-		header = chalk`Deploy to ${guildId} {yellow partially successful}`;
+		header = chalkTemplate`Deploy to ${guildId} {yellow partially successful}`;
 	}
 
 	let outputData: string[][];
@@ -28,7 +29,7 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 			outputData.push([
 				TypeNames[skipped.command.type ?? ApplicationCommandType.ChatInput],
 				skipped.name,
-				chalk`{yellow Skipped} (Dry Run)`,
+				chalkTemplate`{yellow Skipped} (Dry Run)`,
 			]);
 		}
 	} else {
@@ -49,7 +50,7 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 				skipped.name,
 				skipped.id!,
 				skipped.existing!.version,
-				chalk`{yellow Skipped} (Matched Existing)`,
+				chalkTemplate`{yellow Skipped} (Matched Existing)`,
 			]);
 		}
 
@@ -59,7 +60,7 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 				errored.name,
 				'N/A',
 				'N/A',
-				chalk`{redBright Failed} (${errored.error.message})`,
+				chalkTemplate`{redBright Failed} (${errored.error.message})`,
 			]);
 		}
 	}
@@ -131,7 +132,7 @@ export default function outputResults(
 			chalk.greenBright(results.global.commands.length),
 			chalk.yellow(results.global.skipped.length),
 			results.global.bulkError
-				? chalk`{redBright All} (${results.global.bulkError.message})`
+				? chalkTemplate`{redBright All} (${results.global.bulkError.message})`
 				: chalk.redBright(results.global.errored.length),
 		]);
 	}
@@ -141,7 +142,9 @@ export default function outputResults(
 			`Guild (${id})`,
 			chalk.greenBright(data.commands.length),
 			chalk.yellow(data.skipped.length),
-			data.bulkError ? chalk`{redBright All} (${data.bulkError.message})` : chalk.redBright(data.errored.length),
+			data.bulkError
+				? chalkTemplate`{redBright All} (${data.bulkError.message})`
+				: chalk.redBright(data.errored.length),
 		]);
 	}
 

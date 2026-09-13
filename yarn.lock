@@ -2411,7 +2411,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"chalk@npm:^5.6.2":
+"chalk-template@npm:^1.1.2":
+  version: 1.1.2
+  resolution: "chalk-template@npm:1.1.2"
+  dependencies:
+    chalk: "npm:^5.2.0"
+  checksum: 10c0/6d29b185c613cb117ae87c67cef80f531ae860ffb798f94dbf46597c3abaf69eb55bea5e57a99713086933c461ccff918bb70c6af491b83b109654da8b2c006f
+  languageName: node
+  linkType: hard
+
+"chalk@npm:^5.2.0, chalk@npm:^5.6.2":
   version: 5.6.2
   resolution: "chalk@npm:5.6.2"
   checksum: 10c0/99a4b0f0e7991796b1e7e3f52dceb9137cae2a9dfc8fc0784a550dc4c558e15ab32ed70b14b21b52beb2679b4892b41a0aa44249bcb996f01e125d58477c6976
@@ -2753,6 +2762,7 @@ __metadata:
     "@types/node": "npm:^24.13.3"
     "@vitest/coverage-v8": "npm:^5.0.0"
     chalk: "npm:^6.0.0"
+    chalk-template: "npm:^1.1.2"
     commander: "npm:^15.0.0"
     discord-api-types: "npm:^0.38.55"
     dotenv: "npm:^17.4.2"

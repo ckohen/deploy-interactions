@@ -1,6 +1,6 @@
 {
 	"name": "deploy-interactions",
-	"version": "0.3.1",
+	"version": "0.3.2",
 	"type": "module",
 	"packageManager": "yarn@4.17.1",
 	"description": "An executable library for registering discord application commands via @discordjs/rest",
@@ -23,9 +23,8 @@
 		"lint:fix": "eslint . --fix",
 		"format": "prettier --write \"**/*.{ts,mts,cts,js,mjs,cjs,json,yml,yaml}\"",
 		"postinstall": "husky",
-		"prepack": "pinst --disable",
-		"postpack": "pinst --enable",
-		"prepublishOnly": "yarn build"
+		"prepack": "yarn build && pinst --disable",
+		"postpack": "pinst --enable"
 	},
 	"repository": {
 		"type": "git",

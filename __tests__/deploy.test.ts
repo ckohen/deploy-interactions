@@ -14,6 +14,272 @@ afterEach(() => {
 });
 
 describe('deploy', () => {
+	test('returns null without making requests when there are no commands', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const get = vi.spyOn(REST.prototype, 'get');
+		const post = vi.spyOn(REST.prototype, 'post');
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			commands: new Map() as CommandMap,
+			dryRun: true,
+			token: '',
+		});
+
+		expect(result).toBeNull();
+		expect(get).not.toHaveBeenCalled();
+		expect(post).not.toHaveBeenCalled();
+	});
+
+	test('deploys every command to the developer guild', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const guildId = '345678901234567890';
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+		const commands = new Map([
+			[ApplicationCommandType.ChatInput, [{ command, global: true, guildIds: ['456789012345678901'] }]],
+		]) as CommandMap;
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			commands,
+			devGuildId: guildId,
+			dryRun: true,
+			token: '',
+		});
+
+		expect(result).toEqual({
+			dev: guildId,
+			guilds: new Map([[guildId, { commands: [], errored: [], skipped: [{ command, name: 'test' }] }]]),
+		});
+	});
+
+	test.each([
+		[403, true],
+		[500, false],
+	])('handles status %s from a developer bulk deployment', async (status, terminal) => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const error = Object.assign(new Error('Deploy failed'), { status });
+		vi.spyOn(REST.prototype, 'put').mockRejectedValue(error);
+		const guildId = '345678901234567890';
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			bulkOverwrite: true,
+			commands: new Map([[ApplicationCommandType.ChatInput, [{ command, global: true }]]]) as CommandMap,
+			devGuildId: guildId,
+			token: 'token',
+		});
+
+		expect(result).toEqual(
+			terminal
+				? { dev: guildId, error, guilds: new Map() }
+				: {
+						dev: guildId,
+						guilds: new Map([[guildId, { bulkError: error, commands: [], errored: [], skipped: [] }]]),
+					},
+		);
+	});
+
+	test('separates global commands from multiple guild destinations', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+		const guildIds = ['345678901234567890', '456789012345678901'];
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			commands: new Map([[ApplicationCommandType.ChatInput, [{ command, global: true, guildIds }]]]) as CommandMap,
+			dryRun: true,
+			token: '',
+		});
+
+		expect(result?.global?.skipped).toEqual([{ command, name: 'test' }]);
+		expect([...result!.guilds.keys()]).toEqual(guildIds);
+		for (const guild of result!.guilds.values()) {
+			expect(guild.skipped).toEqual([{ command, name: 'test' }]);
+		}
+	});
+
+	test('skips an existing command that is already equal', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+		const existing = {
+			...command,
+			application_id: '123456789012345678',
+			dm_permission: true,
+			id: '234567890123456789',
+			type: ApplicationCommandType.ChatInput,
+			version: '345678901234567890',
+		} as APIApplicationCommand;
+		vi.spyOn(REST.prototype, 'get').mockResolvedValue([existing]);
+		const post = vi.spyOn(REST.prototype, 'post');
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			commands: new Map([[ApplicationCommandType.ChatInput, [{ command, global: true }]]]) as CommandMap,
+			token: 'token',
+		});
+
+		expect(post).not.toHaveBeenCalled();
+		expect(result?.global?.skipped).toEqual([{ command, existing, id: existing.id, name: existing.name }]);
+	});
+
+	test('force mode skips equality requests and posts commands directly', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+		const created = {
+			...command,
+			id: '234567890123456789',
+			type: ApplicationCommandType.ChatInput,
+			version: '345678901234567890',
+		} as APIApplicationCommand;
+		const get = vi.spyOn(REST.prototype, 'get');
+		const post = vi.spyOn(REST.prototype, 'post').mockResolvedValue(created);
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			commands: new Map([[ApplicationCommandType.ChatInput, [{ command, global: true }]]]) as CommandMap,
+			force: true,
+			token: 'token',
+		});
+
+		expect(get).not.toHaveBeenCalled();
+		expect(post).toHaveBeenCalledWith(Routes.applicationCommands('123456789012345678'), { body: command });
+		expect(result?.global?.commands).toEqual([created]);
+	});
+
+	test('records recoverable command errors and continues posting', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const first: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'first',
+			description: 'First command',
+		};
+		const second: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'second',
+			description: 'Second command',
+		};
+		const error = Object.assign(new Error('Server Error'), { status: 500 });
+		const created = {
+			...second,
+			id: '234567890123456789',
+			type: ApplicationCommandType.ChatInput,
+			version: '345678901234567890',
+		} as APIApplicationCommand;
+		vi.spyOn(REST.prototype, 'post').mockRejectedValueOnce(error).mockResolvedValueOnce(created);
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			commands: new Map([
+				[
+					ApplicationCommandType.ChatInput,
+					[
+						{ command: first, global: true },
+						{ command: second, global: true },
+					],
+				],
+			]) as CommandMap,
+			force: true,
+			token: 'token',
+		});
+
+		expect(result?.global).toEqual({
+			commands: [created],
+			errored: [{ command: first, error, name: 'first' }],
+			skipped: [],
+		});
+	});
+
+	test('stops deployment after a terminal command error', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const error = Object.assign(new Error('Unauthorized'), { status: 401 });
+		const post = vi.spyOn(REST.prototype, 'post').mockRejectedValue(error);
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			commands: new Map([[ApplicationCommandType.ChatInput, [{ command, global: true }]]]) as CommandMap,
+			force: true,
+			token: 'token',
+		});
+
+		expect(result).toEqual({ error, guilds: new Map() });
+		expect(post).toHaveBeenCalledOnce();
+	});
+
+	test('records a global bulk error and continues with guild deployment', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const error = Object.assign(new Error('Server Error'), { status: 500 });
+		vi.spyOn(REST.prototype, 'put').mockRejectedValueOnce(error).mockResolvedValueOnce([]);
+		const guildId = '345678901234567890';
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			bulkOverwrite: true,
+			commands: new Map([
+				[ApplicationCommandType.ChatInput, [{ command, global: true, guildIds: [guildId] }]],
+			]) as CommandMap,
+			token: 'token',
+		});
+
+		expect(result).toEqual({
+			global: { bulkError: error, commands: [], errored: [], skipped: [] },
+			guilds: new Map([[guildId, { commands: [], errored: [], skipped: [] }]]),
+		});
+	});
+
+	test.each([
+		[401, true],
+		[403, false],
+	])('handles status %s from a guild bulk deployment', async (status, terminal) => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const error = Object.assign(new Error('Guild deploy failed'), { status });
+		vi.spyOn(REST.prototype, 'put').mockRejectedValue(error);
+		const guildId = '345678901234567890';
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			bulkOverwrite: true,
+			commands: new Map([
+				[ApplicationCommandType.ChatInput, [{ command, global: false, guildIds: [guildId] }]],
+			]) as CommandMap,
+			token: 'token',
+		});
+
+		expect(result).toEqual(
+			terminal
+				? { error, guilds: new Map() }
+				: {
+						guilds: new Map([[guildId, { bulkError: error, commands: [], errored: [], skipped: [] }]]),
+					},
+		);
+	});
+
 	test.each([
 		[true, 'Successfully bulk updated global commands.'],
 		[false, 'Successfully bulk updated guild 345678901234567890 commands.'],
@@ -48,7 +314,10 @@ describe('deploy', () => {
 		expect(log).toHaveBeenCalledWith(expectedLog);
 	});
 
-	test('identifies the destination after a live bulk overwrite', async () => {
+	test.each([
+		[true, 'Successfully bulk updated global commands.'],
+		[false, 'Successfully bulk updated guild 345678901234567890 commands.'],
+	])('identifies the destination after a live bulk overwrite', async (global, expectedLog) => {
 		const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 		vi.spyOn(REST.prototype, 'put').mockResolvedValue([]);
 		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
@@ -56,7 +325,9 @@ describe('deploy', () => {
 			description: 'Test command',
 			type: ApplicationCommandType.ChatInput,
 		};
-		const commands = new Map([[ApplicationCommandType.ChatInput, [{ command, global: true }]]]) as CommandMap;
+		const commands = new Map([
+			[ApplicationCommandType.ChatInput, [{ command, global, guildIds: global ? [] : ['345678901234567890'] }]],
+		]) as CommandMap;
 
 		await deploy({
 			applicationId: '123456789012345678',
@@ -65,7 +336,7 @@ describe('deploy', () => {
 			token: 'token',
 		});
 
-		expect(log).toHaveBeenCalledWith('Successfully bulk updated global commands.');
+		expect(log).toHaveBeenCalledWith(expectedLog);
 	});
 
 	test('includes primary entry point commands', async () => {
@@ -151,6 +422,8 @@ describe('deploy', () => {
 describe('clear', () => {
 	test('clears global and guild destinations in a dry run', async () => {
 		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const setToken = vi.spyOn(REST.prototype, 'setToken');
+		const put = vi.spyOn(REST.prototype, 'put');
 		const guildId = '345678901234567890';
 
 		const result = await clear({
@@ -162,6 +435,22 @@ describe('clear', () => {
 
 		expect(result.global).toEqual({ commands: [] });
 		expect(result.guilds).toEqual(new Map([[guildId, { commands: [] }]]));
+		expect(setToken).not.toHaveBeenCalled();
+		expect(put).not.toHaveBeenCalled();
+	});
+
+	test('returns an empty response when there are no destinations', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const put = vi.spyOn(REST.prototype, 'put');
+
+		const result = await clear({
+			applicationId: '123456789012345678',
+			destinations: [],
+			token: 'token',
+		});
+
+		expect(result).toEqual({ guilds: new Map() });
+		expect(put).not.toHaveBeenCalled();
 	});
 
 	test('bulk overwrites global and guild commands with empty arrays', async () => {

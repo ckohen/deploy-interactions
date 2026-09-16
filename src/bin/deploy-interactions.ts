@@ -425,7 +425,10 @@ async function runAsync() {
 	const config: InteractionsDeployConfig = { ...DefaultConfig, ...storedConfig };
 
 	// Check if its likely the first time run, if so ask if user wants to store
-	if (Object.keys(storedConfig).length === 0 && Object.keys(overrideOptions).length === 1 && overrideOptions.global) {
+	const hasExplicitOverrides = Object.entries(overrideOptions).some(
+		([key, value]) => !(['global', 'summary'].includes(key) && value === true),
+	);
+	if (Object.keys(storedConfig).length === 0 && !hasExplicitOverrides) {
 		console.log(chalk.blueBright('No Stored Configuration found'));
 		const cliStore = await getYesNoInput('Would you like to store the config being generated?');
 		if (cliStore) {

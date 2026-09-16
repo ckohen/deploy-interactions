@@ -113,6 +113,21 @@ export interface DeployResponse {
 	guilds: Map<Snowflake, SingleDeployResponse>;
 }
 
+export interface ClearResponse {
+	/**
+	 * If the entire process was halted due to unauth or similar, the error that was encountered
+	 */
+	error?: DiscordAPIError | HTTPError;
+	/**
+	 * The global response, if any
+	 */
+	global?: { bulkError?: DiscordAPIError | HTTPError; commands: RESTPutAPIApplicationCommandsResult };
+	/**
+	 * A map of guild ids to their individual responses
+	 */
+	guilds: Map<Snowflake, { bulkError?: DiscordAPIError | HTTPError; commands: RESTPutAPIApplicationCommandsResult }>;
+}
+
 /**
  * The response from a deploy to a single destination, either global or guild
  */
@@ -226,7 +241,9 @@ async function deploySingleDestination(
 	console.log(`${bulk ? chalk.red('Overwriting') : 'Deploying'} commands ${guildId ? `to ${guildId}` : 'globally'}.`);
 	if (dryRun) {
 		if (bulk) {
-			console.log(chalkTemplate`{greenBright Successfully} bulk updated.`);
+			console.log(
+				chalkTemplate`{greenBright Successfully} bulk updated ${guildId ? `guild ${guildId}` : 'global'} commands.`,
+			);
 		} else {
 			console.log(`Finished ${guildId ? `guild (${guildId})` : 'global'} deploy`);
 		}
@@ -237,7 +254,9 @@ async function deploySingleDestination(
 	if (bulk) {
 		// A promise rejection here is handled by the callee
 		const result = (await rest.put(route, { body: commands })) as RESTPutAPIApplicationCommandsResult;
-		console.log(chalkTemplate`{greenBright Successfully} bulk updated.`);
+		console.log(
+			chalkTemplate`{greenBright Successfully} bulk updated ${guildId ? `guild ${guildId}` : 'global'} commands.`,
+		);
 		return { skipped: [], errored: [], commands: result };
 	}
 
@@ -283,6 +302,96 @@ async function deploySingleDestination(
 
 	console.log(`Finished ${guildId ? `guild (${guildId})` : 'global'} deploy`);
 	return { commands: added, errored, skipped };
+}
+
+/**
+ * Clears commands from a specified guild or globally
+ *
+ * @param dryRun - Whether to perform a dry run (does not hit the Discord API)
+ * @param guildId - The id of the guild to clear
+ * @returns The status and data of the clear operation
+ */
+async function clearSingleDestination(dryRun: boolean, guildId?: Snowflake) {
+	const route = guildId ? Routes.applicationGuildCommands(clientId, guildId) : Routes.applicationCommands(clientId);
+	console.log(`${chalk.red('Clearing')} commands ${guildId ? `from ${guildId}` : 'globally'}.`);
+	if (dryRun) {
+		console.log(chalkTemplate`{greenBright Successfully} cleared ${guildId ? `guild ${guildId}` : 'global'} commands.`);
+
+		return [];
+	}
+
+	// A promise rejection here is handled by the callee
+	const result = (await rest.put(route, { body: [] })) as RESTPutAPIApplicationCommandsResult;
+	if (result.length > 0) {
+		console.log(
+			chalkTemplate`{yellowBright Warning} cleared ${guildId ? `guild ${guildId}` : 'global'} commands, but ${result.length} commands were returned from the API.`,
+		);
+	} else {
+		console.log(chalkTemplate`{greenBright Successfully} cleared ${guildId ? `guild ${guildId}` : 'global'} commands.`);
+	}
+
+	return result;
+}
+
+// Config docs are in DeployConfig interace
+/**
+ * Clears commands from specified destinations
+ *
+ * @param config - The configuration options for clearing
+ * @returns The results of the clea
+ */
+export async function clear({
+	applicationId,
+	destinations,
+	dryRun = false,
+	token,
+}: Pick<DeployConfig, 'applicationId' | 'dryRun' | 'token'> & {
+	/**
+	 * The destinations to clear commands from, either guild ids or 'global' for global commands
+	 */
+	destinations: (Snowflake | 'global')[];
+}): Promise<ClearResponse> {
+	clientId = applicationId;
+	if (dryRun) {
+		console.log(
+			chalk.magentaBright('This is a dry run, all logs suggesting an API call are not actually making calls'),
+		);
+	} else {
+		rest.setToken(token);
+	}
+
+	const response: ClearResponse = {
+		guilds: new Map(),
+	};
+	for (const destination of destinations) {
+		if (destination === 'global') {
+			const cleared = await clearSingleDestination(dryRun, destination === 'global' ? undefined : destination).catch(
+				(error) => error as DiscordAPIError | HTTPError,
+			);
+			if (cleared instanceof Error) {
+				// If the error is unauth or the unlikely 403 / 404, stop all future requests
+				if ([401, 403, 404].includes(cleared.status)) return { ...response, error: cleared };
+				response.global = { bulkError: cleared, commands: [] };
+			} else {
+				response.global = { commands: cleared };
+			}
+
+			continue;
+		}
+
+		const cleared = await clearSingleDestination(dryRun, destination === 'global' ? undefined : destination).catch(
+			(error) => error as DiscordAPIError | HTTPError,
+		);
+		if (cleared instanceof Error) {
+			// If the error is unauth, stop all future requests, 403 / 404 here can be different per guild
+			if (cleared.status === 401) return { ...response, error: cleared };
+			response.guilds.set(destination, { bulkError: cleared, commands: [] });
+		} else {
+			response.guilds.set(destination, { commands: cleared });
+		}
+	}
+
+	return response;
 }
 
 // Config docs are in DeployConfig interace

@@ -15,9 +15,9 @@ import {
 } from 'discord-api-types/v10';
 import * as dotenv from 'dotenv';
 import packageJson from '../../package.json' with { type: 'json' };
-import { deploy, type ApplicationCommandConfig, type CommandMap, type DeployResponse } from '../lib/Deploy.js';
+import { clear, deploy, type ApplicationCommandConfig, type CommandMap, type DeployResponse } from '../lib/Deploy.js';
 import { getCommands, getStoredConfig, storeConfig } from '../lib/FileParser.js';
-import outputResults from '../lib/LogCompiler.js';
+import outputResults, { outputClearResults } from '../lib/LogCompiler.js';
 
 const { version } = packageJson;
 
@@ -156,6 +156,7 @@ export interface InteractionsDeployCommandConfig {
 
 interface CommandOptions {
 	bulkOverwrite?: boolean;
+	clear?: string[];
 	clientId?: Snowflake;
 	commands?: string[];
 	config?: string;
@@ -180,6 +181,7 @@ command
 	.option('-c, --commands <files...>', 'The path(s) to the files which contain commands to be deployed')
 	.option('-d, --developer [guildId]', 'Run deployment in developer mode (deploy to a single guild)')
 	.option('-b, --bulk-overwrite', 'Overwrite all commands')
+	.option('--clear <all|global|guildId...>', 'Clear commands from the specified guild or globally')
 	.option('-f, --force', 'Skip equality checks and call the API directly')
 	.option('--no-global', 'Disable global deployment, only deploy to guilds')
 	.option('-n, --named-export <name>', 'Use the specified name when looking for command exports')
@@ -458,6 +460,27 @@ async function runAsync() {
 		});
 	}
 
+	if (overrideOptions.clear && !overrideOptions.clear.includes('all')) {
+		const cleared = await clear({
+			applicationId: config.clientId!,
+			destinations: overrideOptions.clear,
+			dryRun: config.dryRun,
+			token: config.token!,
+		});
+
+		outputClearResults(
+			cleared,
+			config.debug ?? false,
+			config.dryRun ?? false,
+			config.full ?? false,
+			!(config.summary ?? true),
+		);
+
+		// Close at end to not "close" the program, communicating unfinished state
+		prompt.close();
+		return;
+	}
+
 	// Determine whether or not we need to go through the destination set up flow
 	let wantsDestinations = !overrideOptions.global;
 	// Collect command file location if not provided and not store in some manner
@@ -617,9 +640,45 @@ async function runAsync() {
 
 	if (config.developer && !('devGuildId' in config)) {
 		config.devGuildId = await getInput({
-			query: chalkTemplate`{green Developer Mode Enabled}, please provide an id for the guild to deploy commands to`,
+			query: chalkTemplate`{green Developer Mode Enabled}, please provide the guild id to use`,
 			validator: (input) => input.length >= 16 && input.length <= 20,
 		});
+	}
+
+	if (overrideOptions.clear?.includes('all')) {
+		const uniqueDestinations = new Set<Snowflake | 'global'>();
+		for (const command of deployableCommands) {
+			if (command.global) uniqueDestinations.add('global');
+			for (const guildId of command.guildIds ?? []) uniqueDestinations.add(guildId);
+		}
+
+		for (const destination of Object.keys(config.commandDestinations ?? {})) {
+			uniqueDestinations.add(destination);
+		}
+
+		if (config.devGuildId) uniqueDestinations.add(config.devGuildId);
+		for (const destination of overrideOptions.clear) {
+			if (destination !== 'all') uniqueDestinations.add(destination);
+		}
+
+		const cleared = await clear({
+			applicationId: config.clientId!,
+			destinations: [...uniqueDestinations],
+			dryRun: config.dryRun,
+			token: config.token!,
+		});
+
+		outputClearResults(
+			cleared,
+			config.debug ?? false,
+			config.dryRun ?? false,
+			config.full ?? false,
+			!(config.summary ?? true),
+		);
+
+		// Close at end to not "close" the program, communicating unfinished state
+		prompt.close();
+		return;
 	}
 
 	/* eslint-enable require-atomic-updates */

@@ -136,6 +136,10 @@ describe('outputResults', () => {
 	test.each([
 		['Successful', { global: { commands: [returnedCommand], errored: [], skipped: [] }, guilds: new Map() }],
 		[
+			'Successful',
+			{ global: { commands: [], deleted: [returnedCommand], errored: [], skipped: [] }, guilds: new Map() },
+		],
+		[
 			'Partially Successful',
 			{
 				global: { commands: [returnedCommand], errored: [], skipped: [] },
@@ -176,6 +180,30 @@ describe('outputResults', () => {
 						},
 					],
 				]),
+			},
+		],
+		[
+			'Failed',
+			{
+				global: {
+					commands: [],
+					deletionErrors: [{ command: returnedCommand, error: failed }],
+					errored: [],
+					skipped: [],
+				},
+				guilds: new Map(),
+			},
+		],
+		[
+			'Partially Successful',
+			{
+				global: {
+					commands: [returnedCommand],
+					deletionErrors: [{ command: returnedCommand, error: failed }],
+					errored: [],
+					skipped: [],
+				},
+				guilds: new Map(),
 			},
 		],
 	] satisfies [string, DeployResponse][])('reports a %s deployment', (expected, results) => {
@@ -237,15 +265,19 @@ describe('outputResults', () => {
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('Skipped (Dry Run)'));
 	});
 
-	test('outputs successful, skipped, and errored commands in full', () => {
+	test('outputs successful, skipped, deleted, and errored commands in full', () => {
 		const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 		const skippedCommand = { name: 'skipped', description: 'Skipped command' };
 		const existing = { ...returnedCommand, name: 'skipped' } as APIApplicationCommand;
+		const deleted = { ...returnedCommand, name: 'deleted' } as APIApplicationCommand;
+		const deleteFailed = { ...returnedCommand, name: 'delete-failed' } as APIApplicationCommand;
 
 		outputResults(
 			{
 				global: {
 					commands: [returnedCommand],
+					deleted: [deleted],
+					deletionErrors: [{ command: deleteFailed, error: failed }],
 					errored: [
 						{
 							command: { name: 'errored', description: 'Errored command' },
@@ -265,6 +297,8 @@ describe('outputResults', () => {
 
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('Success'));
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('Skipped (Matched Existing)'));
+		expect(log).toHaveBeenCalledWith(expect.stringContaining('Deleted'));
+		expect(log).toHaveBeenCalledWith(expect.stringContaining('Delete Failed (Failed)'));
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('Failed (Failed)'));
 	});
 
@@ -316,6 +350,7 @@ describe('outputResults', () => {
 		);
 
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('Summary'));
+		expect(log).toHaveBeenCalledWith(expect.stringContaining('Deleted'));
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('Guild (345678901234567890)'));
 		expect(log).toHaveBeenCalledWith(expect.stringContaining('All (Failed)'));
 	});

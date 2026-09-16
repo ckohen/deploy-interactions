@@ -191,6 +191,7 @@ describe('deployment CLI', () => {
 		const deployConfig = mocks.deploy.mock.calls[0]![0];
 		expect(deployConfig).toMatchObject({
 			applicationId: '123456789012345678',
+			authoritative: false,
 			bulkOverwrite: false,
 			dryRun: true,
 			force: false,
@@ -224,6 +225,7 @@ describe('deployment CLI', () => {
 			'234567890123456789',
 			'--token',
 			'override-token',
+			'--authoritative',
 			'--bulk-overwrite',
 			'--force',
 			'--developer',
@@ -245,6 +247,7 @@ describe('deployment CLI', () => {
 
 		expect(mocks.storeConfig).toHaveBeenCalledWith(
 			expect.objectContaining({
+				authoritative: true,
 				bulkOverwrite: true,
 				clientId: '234567890123456789',
 				developer: true,
@@ -260,6 +263,7 @@ describe('deployment CLI', () => {
 		expect(mocks.deploy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				applicationId: '234567890123456789',
+				authoritative: true,
 				bulkOverwrite: true,
 				devGuildId: '345678901234567890',
 				dryRun: true,

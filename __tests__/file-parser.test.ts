@@ -240,6 +240,7 @@ describe('asynchronous file parsing', () => {
 		await expect(
 			storeConfig(
 				{
+					authoritative: false,
 					clientId: '1234567890123456',
 					debug: false,
 					token: 'secret',

@@ -64,6 +64,10 @@ export interface DeployConfig {
 	 */
 	applicationId: Snowflake;
 	/**
+	 * Whether non-bulk deployments should delete existing commands that are not in the provided commands
+	 */
+	authoritative?: boolean | undefined;
+	/**
 	 * Whether to overwrite all commands using a single API call for global, and per guild
 	 * This is always a forced operation, setting force
 	 */
@@ -141,6 +145,14 @@ export interface SingleDeployResponse {
 	 */
 	commands: APIApplicationCommand[];
 	/**
+	 * Existing commands that were deleted by an authoritative deployment
+	 */
+	deleted?: APIApplicationCommand[];
+	/**
+	 * Existing commands that failed to delete during an authoritative deployment
+	 */
+	deletionErrors?: ErroredCommandDeletion[];
+	/**
 	 * The commands that failed to deploy
 	 */
 	errored: ErroredCommand[];
@@ -148,6 +160,20 @@ export interface SingleDeployResponse {
 	 * The skipped commands
 	 */
 	skipped: SkippedCommand[];
+}
+
+/**
+ * Represents an existing command that failed to delete during an authoritative deployment
+ */
+export interface ErroredCommandDeletion {
+	/**
+	 * The existing command that could not be deleted
+	 */
+	command: APIApplicationCommand;
+	/**
+	 * The error that was received while deleting the command
+	 */
+	error: DiscordAPIError | HTTPError;
 }
 
 /**
@@ -225,6 +251,7 @@ function separateGlobalGuild<T extends RESTPostAPIApplicationCommandsJSONBody>(
  *
  * @param commands - The commands to deploy
  * @param force - Whether to skip fetching the existing commands and checking equality
+ * @param authoritative - Whether to delete existing commands that are not in the provided commands
  * @param bulk - Whether to overwrite all commands in scope
  * @param dryRun - Whether to perform a dry run (does not hit the Discord API)
  * @param guildId - The id of the guild to deploy to
@@ -233,6 +260,7 @@ function separateGlobalGuild<T extends RESTPostAPIApplicationCommandsJSONBody>(
 async function deploySingleDestination(
 	commands: RESTPostAPIApplicationCommandsJSONBody[],
 	force: boolean,
+	authoritative: boolean,
 	bulk: boolean,
 	dryRun: boolean,
 	guildId?: Snowflake,
@@ -248,7 +276,12 @@ async function deploySingleDestination(
 			console.log(`Finished ${guildId ? `guild (${guildId})` : 'global'} deploy`);
 		}
 
-		return { skipped: commands.map((command) => ({ name: command.name, command })), errored: [], commands: [] };
+		return {
+			skipped: commands.map((command) => ({ name: command.name, command })),
+			errored: [],
+			commands: [],
+			...(authoritative && !bulk ? { deleted: [], deletionErrors: [] } : {}),
+		};
 	}
 
 	if (bulk) {
@@ -261,7 +294,7 @@ async function deploySingleDestination(
 	}
 
 	let existingCommands: RESTGetAPIApplicationCommandsResult = [];
-	if (!force) {
+	if (!force || authoritative) {
 		// A promise rejection here is handled by the callee
 		existingCommands = (await rest.get(route, {
 			query: makeURLSearchParams<RESTGetAPIApplicationCommandsQuery>({ with_localizations: true }),
@@ -269,6 +302,8 @@ async function deploySingleDestination(
 	}
 
 	const added: APIApplicationCommand[] = [];
+	const deleted: APIApplicationCommand[] = [];
+	const deletionErrors: ErroredCommandDeletion[] = [];
 	const errored: ErroredCommand[] = [];
 	const skipped: SkippedCommand[] = [];
 	for (const command of commands) {
@@ -300,8 +335,38 @@ async function deploySingleDestination(
 		}
 	}
 
+	if (authoritative) {
+		const providedCommands = new Set(
+			commands.map((command) => `${command.type ?? ApplicationCommandType.ChatInput}:${command.name}`),
+		);
+		const commandsToDelete = existingCommands.filter(
+			(command) => !providedCommands.has(`${command.type}:${command.name}`),
+		);
+		for (const command of commandsToDelete) {
+			const deleteRoute = guildId
+				? Routes.applicationGuildCommand(clientId, guildId, command.id)
+				: Routes.applicationCommand(clientId, command.id);
+			const error = await rest.delete(deleteRoute).then(
+				() => null,
+				(error) => error as DiscordAPIError | HTTPError,
+			);
+			if (error instanceof Error) {
+				// Pass this up to callee as these errors indicate future requests will fail
+				if ([401, 403, 404].includes(error.status)) throw error;
+				deletionErrors.push({ command, error });
+			} else {
+				deleted.push(command);
+			}
+		}
+	}
+
 	console.log(`Finished ${guildId ? `guild (${guildId})` : 'global'} deploy`);
-	return { commands: added, errored, skipped };
+	return {
+		commands: added,
+		errored,
+		skipped,
+		...(authoritative ? { deleted, deletionErrors } : {}),
+	};
 }
 
 /**
@@ -403,6 +468,7 @@ export async function clear({
  */
 export async function deploy({
 	applicationId,
+	authoritative = false,
 	bulkOverwrite = false,
 	commands,
 	devGuildId,
@@ -446,6 +512,7 @@ export async function deploy({
 		const deployed = await deploySingleDestination(
 			allCommands.map((definition) => definition.command),
 			force,
+			authoritative,
 			bulkOverwrite,
 			dryRun,
 			devGuildId,
@@ -471,7 +538,7 @@ export async function deploy({
 		separateGlobalGuild<RESTPostAPIApplicationCommandsJSONBody>(allCommands);
 	// Deploy Global commands
 	if (globalCommands.length > 0) {
-		const deployed = await deploySingleDestination(globalCommands, force, bulkOverwrite, dryRun).catch(
+		const deployed = await deploySingleDestination(globalCommands, force, authoritative, bulkOverwrite, dryRun).catch(
 			(error) => error as DiscordAPIError | HTTPError,
 		);
 		if (deployed instanceof Error) {
@@ -485,9 +552,14 @@ export async function deploy({
 
 	// Deploy Guild Commands
 	for (const [guildId, guildCommands] of guildCommandsMap) {
-		const deployed = await deploySingleDestination(guildCommands, force, bulkOverwrite, dryRun, guildId).catch(
-			(error) => error as DiscordAPIError | HTTPError,
-		);
+		const deployed = await deploySingleDestination(
+			guildCommands,
+			force,
+			authoritative,
+			bulkOverwrite,
+			dryRun,
+			guildId,
+		).catch((error) => error as DiscordAPIError | HTTPError);
 		if (deployed instanceof Error) {
 			// If the error is unauth, stop all future requests, 403 / 404 here can be different per guild
 			if (deployed.status === 401) return { ...response, error: deployed };

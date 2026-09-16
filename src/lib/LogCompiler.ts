@@ -52,7 +52,7 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 	}
 
 	let header = chalkTemplate`Deploy to ${guildId} {greenBright successful}`;
-	if (data.errored.length) {
+	if (data.errored.length || data.deletionErrors?.length) {
 		header = chalkTemplate`Deploy to ${guildId} {yellow partially successful}`;
 	}
 
@@ -88,6 +88,16 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 			]);
 		}
 
+		for (const command of data.deleted ?? []) {
+			outputData.push([
+				TypeNames[command.type],
+				command.name,
+				command.id,
+				command.version,
+				chalk.greenBright('Deleted'),
+			]);
+		}
+
 		for (const errored of data.errored) {
 			outputData.push([
 				TypeNames[errored.command.type ?? ApplicationCommandType.ChatInput],
@@ -95,6 +105,16 @@ function outputFull(guildId: Snowflake | 'global', data: SingleDeployResponse, d
 				'N/A',
 				'N/A',
 				chalkTemplate`{redBright Failed} (${errored.error.message})`,
+			]);
+		}
+
+		for (const deletionError of data.deletionErrors ?? []) {
+			outputData.push([
+				TypeNames[deletionError.command.type],
+				deletionError.command.name,
+				deletionError.command.id,
+				deletionError.command.version,
+				chalkTemplate`{redBright Delete Failed} (${deletionError.error.message})`,
 			]);
 		}
 	}
@@ -201,37 +221,35 @@ export default function outputResults(
 	}
 
 	if (disableSummary) {
-		let failed = true;
-		let success = true;
-		if (results.global?.commands.length || results.global?.skipped.length) {
-			failed = false;
-			if (results.global.errored.length) success = false;
-		}
-
-		if (failed || success) {
-			for (const data of results.guilds.values()) {
-				if (data.commands.length || data.skipped.length) failed = false;
-				if (data.errored.length) success = false;
-				if (!failed && !success) break;
-			}
+		const destinations = [...(results.global ? [results.global] : []), ...results.guilds.values()];
+		let succeeded = false;
+		let failed = false;
+		for (const data of destinations) {
+			const hasErrors =
+				Boolean(data.bulkError) || data.errored.length > 0 || (data.deletionErrors?.length ?? 0) > 0;
+			failed ||= hasErrors;
+			succeeded ||=
+				!data.bulkError &&
+				(!hasErrors || data.commands.length > 0 || data.skipped.length > 0 || (data.deleted?.length ?? 0) > 0);
 		}
 
 		let status = chalk.yellow('Partially Successful');
-		if (success) status = chalk.greenBright('Successful');
-		if (failed) status = chalk.redBright('Failed');
+		if (!failed) status = chalk.greenBright('Successful');
+		if (!succeeded) status = chalk.redBright('Failed');
 		console.log(`Deploy Completed: ${status}`);
 		return;
 	}
 
-	const outputData = [['Destination', 'Successful', 'Skipped', 'Errored']];
+	const outputData = [['Destination', 'Successful', 'Skipped', 'Deleted', 'Errored']];
 	if (results.global) {
 		outputData.push([
 			'Global',
 			chalk.greenBright(results.global.commands.length),
 			chalk.yellow(results.global.skipped.length),
+			chalk.greenBright(results.global.deleted?.length ?? 0),
 			results.global.bulkError
 				? chalkTemplate`{redBright All} (${results.global.bulkError.message})`
-				: chalk.redBright(results.global.errored.length),
+				: chalk.redBright(results.global.errored.length + (results.global.deletionErrors?.length ?? 0)),
 		]);
 	}
 
@@ -240,9 +258,10 @@ export default function outputResults(
 			`Guild (${id})`,
 			chalk.greenBright(data.commands.length),
 			chalk.yellow(data.skipped.length),
+			chalk.greenBright(data.deleted?.length ?? 0),
 			data.bulkError
 				? chalkTemplate`{redBright All} (${data.bulkError.message})`
-				: chalk.redBright(data.errored.length),
+				: chalk.redBright(data.errored.length + (data.deletionErrors?.length ?? 0)),
 		]);
 	}
 

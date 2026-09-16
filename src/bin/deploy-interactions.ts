@@ -26,6 +26,10 @@ const { version } = packageJson;
  */
 export interface InteractionsDeployConfig {
 	/**
+	 * Whether non-bulk deployments should delete existing commands not included in the deployment
+	 */
+	authoritative?: boolean;
+	/**
 	 * Whether to overwrite all commands when deploying (uses the PUT endpoint instead of POST)
 	 * **Always skips equality checks**
 	 */
@@ -104,6 +108,7 @@ export interface InteractionsDeployConfig {
 }
 
 const DefaultConfig: InteractionsDeployConfig = {
+	authoritative: false,
 	bulkOverwrite: false,
 	debug: false,
 	dryRun: false,
@@ -155,6 +160,7 @@ export interface InteractionsDeployCommandConfig {
 }
 
 interface CommandOptions {
+	authoritative?: boolean;
 	bulkOverwrite?: boolean;
 	clear?: string[];
 	clientId?: Snowflake;
@@ -180,6 +186,7 @@ command
 	.option('-i, --client-id <clientId>')
 	.option('-c, --commands <files...>', 'The path(s) to the files which contain commands to be deployed')
 	.option('-d, --developer [guildId]', 'Run deployment in developer mode (deploy to a single guild)')
+	.option('-a, --authoritative', 'Delete existing commands not included in a non-bulk deployment')
 	.option('-b, --bulk-overwrite', 'Overwrite all commands')
 	.option('--clear <all|global|guildId...>', 'Clear commands from the specified guild or globally')
 	.option('-f, --force', 'Skip equality checks and call the API directly')
@@ -214,6 +221,7 @@ const prompt = createPrompt({
 
 // Utility functions
 function mergeOverrides(output: InteractionsDeployConfig, input: CommandOptions) {
+	if ('authoritative' in input) output.authoritative = input.authoritative;
 	if ('bulkOverwrite' in input) output.bulkOverwrite = input.bulkOverwrite;
 	if ('clientId' in input) output.clientId = input.clientId;
 	if ('commands' in input) output.commands = input.commands;
@@ -706,6 +714,7 @@ async function runAsync() {
 	const deployReady = groupedCommands as CommandMap;
 	results = await deploy({
 		applicationId: config.clientId!,
+		authoritative: config.authoritative,
 		bulkOverwrite: config.bulkOverwrite,
 		commands: deployReady,
 		devGuildId: config.developer ? config.devGuildId : undefined,

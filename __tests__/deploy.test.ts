@@ -125,6 +125,7 @@ describe('deploy', () => {
 		} as APIApplicationCommand;
 		vi.spyOn(REST.prototype, 'get').mockResolvedValue([existing]);
 		const post = vi.spyOn(REST.prototype, 'post');
+		const deleteCommand = vi.spyOn(REST.prototype, 'delete');
 
 		const result = await deploy({
 			applicationId: '123456789012345678',
@@ -133,7 +134,211 @@ describe('deploy', () => {
 		});
 
 		expect(post).not.toHaveBeenCalled();
+		expect(deleteCommand).not.toHaveBeenCalled();
 		expect(result?.global?.skipped).toEqual([{ command, existing, id: existing.id, name: existing.name }]);
+	});
+
+	test('authoritative deployment deletes global commands absent by name and type', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'shared',
+			description: 'Shared command',
+		};
+		const existing = {
+			...command,
+			application_id: '123456789012345678',
+			dm_permission: true,
+			id: '234567890123456789',
+			type: ApplicationCommandType.ChatInput,
+			version: '345678901234567890',
+		} as APIApplicationCommand;
+		const staleSameName = {
+			application_id: '123456789012345678',
+			id: '456789012345678901',
+			name: 'shared',
+			type: ApplicationCommandType.User,
+			version: '567890123456789012',
+		} as APIApplicationCommand;
+		const staleDifferentName = {
+			...existing,
+			id: '678901234567890123',
+			name: 'stale',
+		} as APIApplicationCommand;
+		vi.spyOn(REST.prototype, 'get').mockResolvedValue([existing, staleSameName, staleDifferentName]);
+		const post = vi.spyOn(REST.prototype, 'post');
+		const deleteCommand = vi.spyOn(REST.prototype, 'delete').mockResolvedValue(undefined);
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			authoritative: true,
+			commands: new Map([[ApplicationCommandType.ChatInput, [{ command, global: true }]]]) as CommandMap,
+			token: 'token',
+		});
+
+		expect(post).not.toHaveBeenCalled();
+		expect(deleteCommand).toHaveBeenCalledTimes(2);
+		expect(deleteCommand).toHaveBeenNthCalledWith(1, Routes.applicationCommand('123456789012345678', staleSameName.id));
+		expect(deleteCommand).toHaveBeenNthCalledWith(
+			2,
+			Routes.applicationCommand('123456789012345678', staleDifferentName.id),
+		);
+		expect(result?.global).toEqual({
+			commands: [],
+			deleted: [staleSameName, staleDifferentName],
+			deletionErrors: [],
+			errored: [],
+			skipped: [{ command, existing, id: existing.id, name: existing.name }],
+		});
+	});
+
+	test('authoritative force deployment discovers and deletes stale guild commands', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const applicationId = '123456789012345678';
+		const guildId = '345678901234567890';
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+		const created = {
+			...command,
+			id: '234567890123456789',
+			type: ApplicationCommandType.ChatInput,
+			version: '456789012345678901',
+		} as APIApplicationCommand;
+		const stale = {
+			...created,
+			id: '567890123456789012',
+			name: 'stale',
+		} as APIApplicationCommand;
+		const get = vi.spyOn(REST.prototype, 'get').mockResolvedValue([stale]);
+		vi.spyOn(REST.prototype, 'post').mockResolvedValue(created);
+		const deleteCommand = vi.spyOn(REST.prototype, 'delete').mockResolvedValue(undefined);
+
+		const result = await deploy({
+			applicationId,
+			authoritative: true,
+			commands: new Map([
+				[ApplicationCommandType.ChatInput, [{ command, global: false, guildIds: [guildId] }]],
+			]) as CommandMap,
+			force: true,
+			token: 'token',
+		});
+
+		expect(get).toHaveBeenCalledWith(Routes.applicationGuildCommands(applicationId, guildId), expect.any(Object));
+		expect(deleteCommand).toHaveBeenCalledWith(Routes.applicationGuildCommand(applicationId, guildId, stale.id));
+		expect(result?.guilds.get(guildId)).toMatchObject({ commands: [created], deleted: [stale] });
+	});
+
+	test('authoritative dry runs remain request-free', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const get = vi.spyOn(REST.prototype, 'get');
+		const deleteCommand = vi.spyOn(REST.prototype, 'delete');
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			authoritative: true,
+			commands: new Map([[ApplicationCommandType.ChatInput, [{ command, global: true }]]]) as CommandMap,
+			dryRun: true,
+			token: '',
+		});
+
+		expect(get).not.toHaveBeenCalled();
+		expect(deleteCommand).not.toHaveBeenCalled();
+		expect(result?.global).toMatchObject({ deleted: [], deletionErrors: [] });
+	});
+
+	test('authoritative is redundant for bulk overwrites', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+		const get = vi.spyOn(REST.prototype, 'get');
+		const put = vi.spyOn(REST.prototype, 'put').mockResolvedValue([]);
+		const deleteCommand = vi.spyOn(REST.prototype, 'delete');
+
+		await deploy({
+			applicationId: '123456789012345678',
+			authoritative: true,
+			bulkOverwrite: true,
+			commands: new Map([[ApplicationCommandType.ChatInput, [{ command, global: true }]]]) as CommandMap,
+			token: 'token',
+		});
+
+		expect(put).toHaveBeenCalledOnce();
+		expect(get).not.toHaveBeenCalled();
+		expect(deleteCommand).not.toHaveBeenCalled();
+	});
+
+	test('records recoverable authoritative deletion errors', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+		const stale = {
+			...command,
+			id: '234567890123456789',
+			name: 'stale',
+			type: ApplicationCommandType.ChatInput,
+			version: '345678901234567890',
+		} as APIApplicationCommand;
+		const error = Object.assign(new Error('Server Error'), { status: 500 });
+		vi.spyOn(REST.prototype, 'get').mockResolvedValue([stale]);
+		vi.spyOn(REST.prototype, 'post').mockResolvedValue({
+			...command,
+			id: '456789012345678901',
+			type: ApplicationCommandType.ChatInput,
+			version: '567890123456789012',
+		});
+		vi.spyOn(REST.prototype, 'delete').mockRejectedValue(error);
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			authoritative: true,
+			commands: new Map([[ApplicationCommandType.ChatInput, [{ command, global: true }]]]) as CommandMap,
+			token: 'token',
+		});
+
+		expect(result?.global?.deleted).toEqual([]);
+		expect(result?.global?.deletionErrors).toEqual([{ command: stale, error }]);
+	});
+
+	test('stops after a terminal authoritative deletion error', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const command: RESTPostAPIChatInputApplicationCommandsJSONBody = {
+			name: 'test',
+			description: 'Test command',
+		};
+		const stale = {
+			...command,
+			id: '234567890123456789',
+			name: 'stale',
+			type: ApplicationCommandType.ChatInput,
+			version: '345678901234567890',
+		} as APIApplicationCommand;
+		const error = Object.assign(new Error('Unauthorized'), { status: 401 });
+		vi.spyOn(REST.prototype, 'get').mockResolvedValue([stale]);
+		vi.spyOn(REST.prototype, 'post').mockResolvedValue({
+			...command,
+			id: '456789012345678901',
+			type: ApplicationCommandType.ChatInput,
+			version: '567890123456789012',
+		});
+		vi.spyOn(REST.prototype, 'delete').mockRejectedValue(error);
+
+		const result = await deploy({
+			applicationId: '123456789012345678',
+			authoritative: true,
+			commands: new Map([[ApplicationCommandType.ChatInput, [{ command, global: true }]]]) as CommandMap,
+			token: 'token',
+		});
+
+		expect(result).toEqual({ error, guilds: new Map() });
 	});
 
 	test('force mode skips equality requests and posts commands directly', async () => {

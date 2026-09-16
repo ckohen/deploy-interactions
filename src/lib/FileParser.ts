@@ -240,7 +240,13 @@ export async function storeConfig(config: InteractionsDeployConfig, name: string
 		}
 
 		// Don't store default config options
-		const defaultFalseKeys: (keyof InteractionsDeployConfig)[] = ['bulkOverwrite', 'debug', 'dryRun', 'force'];
+		const defaultFalseKeys: (keyof InteractionsDeployConfig)[] = [
+			'authoritative',
+			'bulkOverwrite',
+			'debug',
+			'dryRun',
+			'force',
+		];
 		if (mutableConfig.developer === undefined) {
 			delete mutableConfig.developer;
 		}
